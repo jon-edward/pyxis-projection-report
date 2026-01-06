@@ -384,10 +384,6 @@ create_report(config)
         "reports/projection_report.pdf"
       );
 
-      await worker.removeFile("reports/Inventory.xlsx");
-      await worker.removeFile("reports/Usage.xlsx");
-      await worker.removeFile("reports/projection_report.pdf");
-
       const blob = new Blob([new Uint8Array(fileData)], {
         type: "application/pdf",
       });
@@ -405,14 +401,17 @@ create_report(config)
         document.body.removeChild(link);
       }, 0);
 
+      await worker.removeFile("reports/Inventory.xlsx");
+      await worker.removeFile("reports/Usage.xlsx");
+      await worker.removeFile("reports/projection_report.pdf");
+
       setSuccess(
         "Report generated successfully! Your download should begin shortly."
       );
     } catch (error: any) {
-      console.error(error);
+      console.error(error.message);
       setError(
-        error.message ||
-          "Error generating report. Please check your input files and try again."
+        "Error generating report. Please check your input files and try again."
       );
     }
 
@@ -457,23 +456,6 @@ create_report(config)
             </div>
           </Show>
         </div>
-
-        {/* Success Message */}
-        <Show when={successMessage()}>
-          <div class="message message-success">
-            <span class="message-icon">✓</span>
-            <span>{successMessage()}</span>
-          </div>
-        </Show>
-
-        {/* Error Message */}
-        <Show when={errorMessage()}>
-          <div class="message message-error">
-            <span class="message-icon">⚠</span>
-            <span>{errorMessage()}</span>
-          </div>
-        </Show>
-
         <Form onSubmit={handleSubmit}>
           {/* File Upload Section */}
           <Section
@@ -585,6 +567,22 @@ create_report(config)
             </button>
           </div>
         </Form>
+
+        {/* Success Message */}
+        <Show when={successMessage()}>
+          <div class="message message-success">
+            <span class="message-icon">✓</span>
+            <span>{successMessage()}</span>
+          </div>
+        </Show>
+
+        {/* Error Message */}
+        <Show when={errorMessage()}>
+          <div class="message message-error">
+            <span class="message-icon">⚠</span>
+            <span>{errorMessage()}</span>
+          </div>
+        </Show>
 
         {/* Footer */}
         <div class="footer">
