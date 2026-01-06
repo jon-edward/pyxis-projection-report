@@ -8,6 +8,7 @@ import {
 } from "@modular-forms/solid";
 import * as v from "valibot";
 import WorkerApi from "./WorkerApi";
+import "./styles.css";
 
 const ReportConfigSchema = v.object({
   onlyCritical: v.boolean(),
@@ -23,6 +24,31 @@ const ReportConfigSchema = v.object({
 
 type ReportConfig = v.InferInput<typeof ReportConfigSchema>;
 
+// Cache key for localStorage
+const CACHE_KEY = "pyxis_report_config_v1";
+
+// Load cached configuration from localStorage
+function loadCachedConfig() {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (error) {
+    console.error("Error loading cached config:", error);
+  }
+  return null;
+}
+
+// Save configuration to localStorage
+function saveCachedConfig(config: any) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(config));
+  } catch (error) {
+    console.error("Error saving cached config:", error);
+  }
+}
+
 // Reusable Components
 interface CheckboxFieldProps {
   name: "onlyCritical" | "includeUnordered" | "includeMinZero";
@@ -36,51 +62,23 @@ function CheckboxField(props: CheckboxFieldProps) {
   const id = name.toLowerCase().replace(/([A-Z])/g, "-$1");
 
   return (
-    <div style={{ "margin-bottom": "1rem" }}>
+    <div class="checkbox-field">
       <Field name={name} type="boolean">
         {(field: any, inputProps: any) => (
           <div>
-            <div
-              style={{
-                display: "flex",
-                "align-items": "center",
-                gap: "0.5rem",
-              }}
-            >
+            <div class="checkbox-container">
               <input
                 type="checkbox"
                 id={id}
+                class="checkbox-input"
                 {...inputProps}
                 checked={field.value}
-                style={{
-                  cursor: "pointer",
-                  width: "18px",
-                  height: "18px",
-                }}
               />
-              <label
-                for={id}
-                style={{
-                  cursor: "pointer",
-                  "font-weight": "500",
-                  color: "#1e293b",
-                }}
-              >
+              <label for={id} class="checkbox-label">
                 {label}
               </label>
             </div>
-            {description && (
-              <p
-                style={{
-                  "font-size": "0.875rem",
-                  color: "#64748b",
-                  "margin-top": "0.25rem",
-                  "margin-left": "1.625rem",
-                }}
-              >
-                {description}
-              </p>
-            )}
+            {description && <p class="checkbox-description">{description}</p>}
           </div>
         )}
       </Field>
@@ -99,47 +97,20 @@ function NumberField(props: NumberFieldProps) {
   const { name, label, description, Field } = props;
 
   return (
-    <div style={{ "margin-bottom": "1rem" }}>
+    <div class="number-field">
       <Field name={name} type="number">
         {(field: any, inputProps: any) => (
-          <div style={{ display: "flex", "flex-direction": "column" }}>
-            <label
-              for={name}
-              style={{
-                "font-weight": "600",
-                color: "#1e293b",
-                "margin-bottom": "0.25rem",
-              }}
-            >
+          <div class="field-container">
+            <label for={name} class="field-label">
               {label}
             </label>
-            {description && (
-              <p
-                style={{
-                  "font-size": "0.875rem",
-                  color: "#64748b",
-                  "margin-bottom": "0.5rem",
-                }}
-              >
-                {description}
-              </p>
-            )}
+            {description && <p class="field-description">{description}</p>}
             <input
               type="number"
               id={name}
+              class="number-input"
               {...inputProps}
               value={field.value ?? 0}
-              style={{
-                display: "block",
-                padding: "0.625rem",
-                border: "2px solid #e2e8f0",
-                "border-radius": "8px",
-                "font-size": "1rem",
-                transition: "all 0.2s",
-                outline: "none",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-              onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
             />
           </div>
         )}
@@ -180,30 +151,15 @@ function FileField(props: FileFieldProps) {
   const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
 
   return (
-    <div style={{ "margin-bottom": "1rem" }}>
+    <div class="file-field">
       <Field name={name} type="file">
         {(field: any, inputProps: any) => (
-          <div style={{ display: "flex", "flex-direction": "column" }}>
-            <label
-              for={name}
-              style={{
-                "font-weight": "600",
-                color: "#1e293b",
-                "margin-bottom": "0.5rem",
-              }}
-            >
+          <div class="field-container">
+            <label for={name} class="field-label">
               {label}
             </label>
             <input
-              style={{
-                display: "block",
-                padding: "0.625rem",
-                border: "2px solid #e2e8f0",
-                "border-radius": "8px",
-                "background-color": "#f8fafc",
-                cursor: "pointer",
-                transition: "all 0.2s",
-              }}
+              class="file-input"
               type="file"
               id={name}
               accept=".xlsx,.xls"
@@ -221,34 +177,16 @@ function FileField(props: FileFieldProps) {
                   event.target.value = "";
                 }
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "#cbd5e1")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.borderColor = "#e2e8f0")
-              }
             />
             <Show when={selectedFile()}>
-              <div
-                style={{
-                  "margin-top": "0.5rem",
-                  padding: "0.5rem",
-                  "background-color": "#f0f9ff",
-                  border: "1px solid #bae6fd",
-                  "border-radius": "6px",
-                  "font-size": "0.875rem",
-                  color: "#0c4a6e",
-                }}
-              >
+              <div class="file-selected">
                 ✓ Selected: {selectedFile()!.name} (
                 {(selectedFile()!.size / 1024).toFixed(1)} KB)
               </div>
             </Show>
             {field.error && (
-              <div style={{ "margin-top": "0.5rem" }}>
-                <span style={{ color: "#dc2626", "font-size": "0.875rem" }}>
-                  {props.errorMessage}
-                </span>
+              <div class="field-error">
+                <span>{props.errorMessage}</span>
               </div>
             )}
           </div>
@@ -273,89 +211,36 @@ function DynamicListField(props: DynamicListFieldProps) {
     props;
 
   return (
-    <div style={{ "margin-bottom": "1.5rem" }}>
+    <div class="dynamic-list-field">
       <FieldArray name={name}>
         {(fieldArray: any) => (
           <div>
-            <div style={{ "margin-bottom": "0.75rem" }}>
-              <label style={{ "font-weight": "600", color: "#1e293b" }}>
-                {label}
-              </label>
-              {description && (
-                <p
-                  style={{
-                    "font-size": "0.875rem",
-                    color: "#64748b",
-                    "margin-top": "0.25rem",
-                  }}
-                >
-                  {description}
-                </p>
-              )}
+            <div class="list-header">
+              <label class="field-label">{label}</label>
+              {description && <p class="field-description">{description}</p>}
             </div>
             <For each={fieldArray.items.slice(0, -1)}>
               {(item: any, index: () => number) => (
                 <Field name={`${name}.${index()}`}>
                   {(field: any, inputProps: any) => (
-                    <div style={{ "margin-bottom": "0.5rem" }}>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <div class="list-item">
+                      <div class="list-item-row">
                         <input
                           {...inputProps}
                           value={field.value || ""}
                           placeholder={placeholder}
-                          style={{
-                            flex: 1,
-                            padding: "0.625rem",
-                            border: field.error
-                              ? "2px solid #dc2626"
-                              : "2px solid #e2e8f0",
-                            "border-radius": "8px",
-                            "font-size": "1rem",
-                            transition: "all 0.2s",
-                            outline: "none",
-                          }}
-                          onFocus={(e) =>
-                            !field.error &&
-                            (e.target.style.borderColor = "#3b82f6")
-                          }
-                          onBlur={(e) =>
-                            !field.error &&
-                            (e.target.style.borderColor = "#e2e8f0")
-                          }
+                          class={`list-input ${field.error ? "error" : ""}`}
                         />
                         <button
                           type="button"
+                          class="btn-remove"
                           onClick={() => remove(form, name, { at: index() })}
-                          style={{
-                            padding: "0.625rem 1rem",
-                            background: "#dc2626",
-                            color: "white",
-                            border: "none",
-                            "border-radius": "8px",
-                            cursor: "pointer",
-                            "font-weight": "500",
-                            transition: "all 0.2s",
-                          }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.background = "#b91c1c")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = "#dc2626")
-                          }
                         >
                           Remove
                         </button>
                       </div>
                       {field.error && (
-                        <div
-                          style={{
-                            color: "#dc2626",
-                            "font-size": "0.875rem",
-                            "margin-top": "0.25rem",
-                          }}
-                        >
-                          {field.error}
-                        </div>
+                        <div class="field-error">{field.error}</div>
                       )}
                     </div>
                   )}
@@ -365,64 +250,22 @@ function DynamicListField(props: DynamicListFieldProps) {
 
             <Field name={`${name}.${fieldArray.items.length - 1}`}>
               {(field: any, inputProps: any) => (
-                <div style={{ "margin-bottom": "0.75rem" }}>
+                <div class="list-item-last">
                   <input
                     {...inputProps}
                     value={field.value || ""}
                     placeholder={placeholder}
-                    style={{
-                      width: "100%",
-                      padding: "0.625rem",
-                      border: field.error
-                        ? "2px solid #dc2626"
-                        : "2px solid #e2e8f0",
-                      "border-radius": "8px",
-                      "font-size": "1rem",
-                      transition: "all 0.2s",
-                      outline: "none",
-                      "box-sizing": "border-box",
-                    }}
-                    onFocus={(e) =>
-                      !field.error && (e.target.style.borderColor = "#3b82f6")
-                    }
-                    onBlur={(e) =>
-                      !field.error && (e.target.style.borderColor = "#e2e8f0")
-                    }
+                    class={`list-input-last ${field.error ? "error" : ""}`}
                   />
-                  {field.error && (
-                    <div
-                      style={{
-                        color: "#dc2626",
-                        "font-size": "0.875rem",
-                        "margin-top": "0.25rem",
-                      }}
-                    >
-                      {field.error}
-                    </div>
-                  )}
+                  {field.error && <div class="field-error">{field.error}</div>}
                 </div>
               )}
             </Field>
 
             <button
               type="button"
+              class="btn-add"
               onClick={() => insert(form, name, { value: "" })}
-              style={{
-                padding: "0.625rem 1rem",
-                background: "#10b981",
-                color: "white",
-                border: "none",
-                "border-radius": "8px",
-                cursor: "pointer",
-                "font-weight": "500",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#059669";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#10b981";
-              }}
             >
               + Add {name === "devices" ? "Device" : "Exclusion"}
             </button>
@@ -440,36 +283,10 @@ function Section(props: {
   children: any;
 }) {
   return (
-    <div
-      style={{
-        "margin-bottom": "2rem",
-        padding: "1.5rem",
-        background: "white",
-        border: "1px solid #e2e8f0",
-        "border-radius": "12px",
-        "box-shadow": "0 1px 3px rgba(0, 0, 0, 0.05)",
-      }}
-    >
-      <h3
-        style={{
-          "font-size": "1.125rem",
-          "font-weight": "700",
-          color: "#0f172a",
-          "margin-bottom": "0.5rem",
-        }}
-      >
-        {props.title}
-      </h3>
+    <div class="section">
+      <h3 class="section-title">{props.title}</h3>
       {props.description && (
-        <p
-          style={{
-            "font-size": "0.875rem",
-            color: "#64748b",
-            "margin-bottom": "1.5rem",
-          }}
-        >
-          {props.description}
-        </p>
+        <p class="section-description">{props.description}</p>
       )}
       {props.children}
     </div>
@@ -478,9 +295,11 @@ function Section(props: {
 
 // Main App Component
 export default function App() {
+  const cachedConfig = loadCachedConfig();
+
   const [form, { Form, Field, FieldArray }] = createForm<ReportConfig>({
     validate: valiForm(ReportConfigSchema),
-    initialValues: {
+    initialValues: cachedConfig || {
       onlyCritical: true,
       includeUnordered: false,
       includeMinZero: false,
@@ -501,6 +320,18 @@ export default function App() {
     setIsLoading(true);
     setError("");
     setSuccess("");
+
+    // Save configuration to cache (excluding files)
+    const configToCache = {
+      onlyCritical: result.onlyCritical,
+      includeUnordered: result.includeUnordered,
+      includeMinZero: result.includeMinZero,
+      criticalThreshold: result.criticalThreshold,
+      maxDays: result.maxDays,
+      devices: result.devices,
+      exclude: result.exclude,
+    };
+    saveCachedConfig(configToCache);
 
     try {
       setLoadingStatus("Reading files...");
@@ -586,86 +417,55 @@ create_report(config)
   };
 
   return (
-    <div
-      style={{
-        "min-height": "100vh",
-        background: "linear-gradient(to bottom right, #f8fafc, #e2e8f0)",
-        padding: "2rem",
-      }}
-    >
-      <div
-        style={{
-          "max-width": "800px",
-          margin: "0 auto",
-        }}
-      >
+    <div class="app-container">
+      <div class="app-content">
         {/* Header */}
-        <div
-          style={{
-            "margin-bottom": "2rem",
-            padding: "2rem",
-            background: "white",
-            "border-radius": "12px",
-            "box-shadow": "0 4px 6px rgba(0, 0, 0, 0.05)",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-          <h1
-            style={{
-              "font-size": "2rem",
-              "font-weight": "800",
-              color: "#0f172a",
-              "margin-bottom": "0.5rem",
-            }}
-          >
-            Pyxis Inventory Report Generator
-          </h1>
-          <p
-            style={{
-              color: "#64748b",
-              "font-size": "1rem",
-            }}
-          >
-            Configure and generate your inventory projection reports
-          </p>
+        <div class="header">
+          <div class="header-content">
+            <div>
+              <h1 class="header-title">Pyxis Inventory Report Generator</h1>
+              <p class="header-subtitle">
+                Configure and generate your inventory projection reports
+              </p>
+            </div>
+            <Show when={cachedConfig}>
+              <button
+                type="button"
+                class="btn-clear-cache"
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Are you sure you want to clear all cached settings?"
+                    )
+                  ) {
+                    localStorage.removeItem(CACHE_KEY);
+                    window.location.reload();
+                  }
+                }}
+              >
+                Clear Cache
+              </button>
+            </Show>
+          </div>
+          <Show when={cachedConfig}>
+            <div class="cache-indicator">
+              ℹ️ Previous settings loaded from cache
+            </div>
+          </Show>
         </div>
 
         {/* Success Message */}
         <Show when={successMessage()}>
-          <div
-            style={{
-              "margin-bottom": "1.5rem",
-              padding: "1rem",
-              background: "#dcfce7",
-              border: "1px solid #86efac",
-              "border-radius": "8px",
-              color: "#166534",
-              display: "flex",
-              "align-items": "center",
-              gap: "0.5rem",
-            }}
-          >
-            <span style={{ "font-size": "1.25rem" }}>✓</span>
+          <div class="message message-success">
+            <span class="message-icon">✓</span>
             <span>{successMessage()}</span>
           </div>
         </Show>
 
         {/* Error Message */}
         <Show when={errorMessage()}>
-          <div
-            style={{
-              "margin-bottom": "1.5rem",
-              padding: "1rem",
-              background: "#fee2e2",
-              border: "1px solid #fca5a5",
-              "border-radius": "8px",
-              color: "#991b1b",
-              display: "flex",
-              "align-items": "center",
-              gap: "0.5rem",
-            }}
-          >
-            <span style={{ "font-size": "1.25rem" }}>⚠</span>
+          <div class="message message-error">
+            <span class="message-icon">⚠</span>
             <span>{errorMessage()}</span>
           </div>
         </Show>
@@ -673,7 +473,7 @@ create_report(config)
         <Form onSubmit={handleSubmit}>
           {/* File Upload Section */}
           <Section
-            title="📁 Upload Files"
+            title="Upload Files"
             description="Select your Pyxis inventory and usage Excel files"
           >
             <FileField
@@ -694,7 +494,7 @@ create_report(config)
 
           {/* Filter Options Section */}
           <Section
-            title="🔍 Filter Options"
+            title="Filter Options"
             description="Configure which items to include in the report"
           >
             <CheckboxField
@@ -719,7 +519,7 @@ create_report(config)
 
           {/* Thresholds Section */}
           <Section
-            title="⚙️ Threshold Settings"
+            title="Threshold Settings"
             description="Set the criteria for critical items and projection period"
           >
             <NumberField
@@ -738,7 +538,7 @@ create_report(config)
 
           {/* Device Selection Section */}
           <Section
-            title="🏥 Device Selection"
+            title="Device Selection"
             description="Specify which devices to include or exclude from the report"
           >
             <DynamicListField
@@ -762,59 +562,15 @@ create_report(config)
           </Section>
 
           {/* Submit Button */}
-          <div
-            style={{
-              padding: "1.5rem",
-              background: "white",
-              border: "1px solid #e2e8f0",
-              "border-radius": "12px",
-              "box-shadow": "0 1px 3px rgba(0, 0, 0, 0.05)",
-            }}
-          >
+          <div class="submit-container">
             <button
               type="submit"
-              style={{
-                padding: "1rem 2rem",
-                background: isLoading() ? "#94a3b8" : "#3b82f6",
-                color: "white",
-                border: "none",
-                "border-radius": "8px",
-                cursor: isLoading() ? "not-allowed" : "pointer",
-                "font-size": "1.125rem",
-                "font-weight": "600",
-                width: "100%",
-                transition: "all 0.2s",
-                "box-shadow": isLoading()
-                  ? "none"
-                  : "0 4px 6px rgba(59, 130, 246, 0.3)",
-              }}
+              class={`btn-submit ${isLoading() ? "loading" : ""}`}
               disabled={isLoading()}
-              onMouseEnter={(e) =>
-                !isLoading() && (e.currentTarget.style.background = "#2563eb")
-              }
-              onMouseLeave={(e) =>
-                !isLoading() && (e.currentTarget.style.background = "#3b82f6")
-              }
             >
               {isLoading() ? (
-                <div
-                  style={{
-                    display: "flex",
-                    "align-items": "center",
-                    "justify-content": "center",
-                    gap: "0.75rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "20px",
-                      height: "20px",
-                      border: "3px solid rgba(255, 255, 255, 0.3)",
-                      "border-top-color": "white",
-                      "border-radius": "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  />
+                <div class="loading-content">
+                  <div class="spinner" />
                   <span>{loadingStatus()}</span>
                 </div>
               ) : (
@@ -825,24 +581,10 @@ create_report(config)
         </Form>
 
         {/* Footer */}
-        <div
-          style={{
-            "margin-top": "2rem",
-            "text-align": "center",
-            color: "#94a3b8",
-            "font-size": "0.875rem",
-          }}
-        >
+        <div class="footer">
           <p>Pyxis Inventory Report Generator v1.0</p>
         </div>
       </div>
-
-      {/* Add CSS animation for spinner */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
