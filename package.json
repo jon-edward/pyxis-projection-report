@@ -1,0 +1,26 @@
+{
+  "name": "vite-template-solid",
+  "version": "0.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "_prepare_lib": "node scripts/prepare-lib.js",
+    "start": "npm run _prepare_lib && vite",
+    "dev": "npm run _prepare_lib && vite",
+    "build": "npm run _prepare_lib && vite build",
+    "serve": "npm run _prepare_lib && vite preview"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "adm-zip": "^0.5.16",
+    "solid-devtools": "^0.34.3",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.4",
+    "vite-plugin-solid": "^2.11.8"
+  },
+  "dependencies": {
+    "@modular-forms/solid": "^0.25.1",
+    "solid-js": "^1.9.5",
+    "valibot": "^1.2.0"
+  }
+}
