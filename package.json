@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "description": "",
   "main": "src/index.tsx",
+  "type": "module",
   "scripts": {
     "_prepare_lib": "node scripts/prepare-lib.js",
     "start": "npm run _prepare_lib && vite",
