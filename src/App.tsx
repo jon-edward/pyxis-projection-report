@@ -122,6 +122,7 @@ function NumberField(props: NumberFieldProps) {
 interface FileFieldProps {
   name: "usageFile" | "inventoryFile";
   label: string;
+  description?: string;
   form: FormStore<ReportConfig, undefined>;
   errorMessage: string;
   Field: any;
@@ -178,6 +179,9 @@ function FileField(props: FileFieldProps) {
                 }
               }}
             />
+            {props.description && (
+              <p class="field-description">{props.description}</p>
+            )}
             <Show when={selectedFile()}>
               <div class="file-selected">
                 ✓ Selected: {selectedFile()!.name} (
@@ -474,12 +478,13 @@ create_report(config)
           {/* File Upload Section */}
           <Section
             title="Upload Files"
-            description="Select your Pyxis inventory and usage Excel files"
+            description='Select your Pyxis inventory and usage Excel files. Make sure to use the "Excel (data only)" export format'
           >
             <FileField
               name="usageFile"
               label="Usage File"
               Field={Field}
+              description='This is named "Controlled Projection Usage Report" or "Non-Controlled Projection Usage Report" in Pyxis public reports'
               errorMessage="Please provide a Pyxis usage Excel file"
               form={form}
             />
@@ -487,6 +492,7 @@ create_report(config)
               name="inventoryFile"
               label="Inventory File"
               Field={Field}
+              description='This is named "Controlled Projection Inventory Report" or "Non-Controlled Projection Inventory Report" in Pyxis public reports'
               errorMessage="Please provide a Pyxis inventory Excel file"
               form={form}
             />
@@ -506,7 +512,7 @@ create_report(config)
             <CheckboxField
               name="includeUnordered"
               label="Include unordered items"
-              description="Include items that haven't been ordered yet"
+              description="Include items that don't have an active order"
               Field={Field}
             />
             <CheckboxField
@@ -544,7 +550,7 @@ create_report(config)
             <DynamicListField
               name="devices"
               label="Include Devices"
-              placeholder="Device name (e.g., EMER, ICU, OR1)"
+              placeholder="Device name (e.g., EMER, ICU)"
               description="Leave blank to include all devices"
               form={form}
               Field={Field}
@@ -553,7 +559,7 @@ create_report(config)
             <DynamicListField
               name="exclude"
               label="Exclude Devices"
-              placeholder="Device name (e.g., STORAGE, ARCHIVE)"
+              placeholder="Device name (e.g., TEMP)"
               description="Devices to explicitly exclude from the report"
               form={form}
               Field={Field}
@@ -583,6 +589,10 @@ create_report(config)
         {/* Footer */}
         <div class="footer">
           <p>Pyxis Inventory Report Generator v1.0</p>
+          <p class="disclaimer">
+            Created by{" "}
+            <a href="https://github.com/jon-edward">Jonathan Townsend</a>
+          </p>
         </div>
       </div>
     </div>

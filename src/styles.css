@@ -410,3 +410,17 @@
   color: #94a3b8;
   font-size: 0.875rem;
 }
+
+.disclaimer {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.disclaimer a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.disclaimer a:hover {
+  text-decoration: underline;
+}
