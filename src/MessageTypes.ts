@@ -1,4 +1,4 @@
-/// Shared message types between worker and main thread.
+/// Shared message types between worker and main thread
 
 export interface FinishedMessage {
   kind: "finished";
@@ -24,7 +24,13 @@ export interface FileContentMessage {
   kind: "fileContent";
   id: number;
   name: string;
-  fileData: Uint8Array;
+}
+
+export interface FileContentResult {
+  kind: "finished";
+  id: number;
+  fileData?: Uint8Array;
+  error?: string;
 }
 
 export interface StderrMessage {
@@ -41,7 +47,10 @@ export interface RunMessage {
   kind: "run";
   id: number;
   python: string;
-  options?: Record<string, any>;
+  options?: {
+    globals?: Record<string, any>;
+    locals?: Record<string, any>;
+  };
 }
 
 export type Message =

@@ -1,5 +1,3 @@
-/// Worker API that interacts with a Pyodide worker.
-
 import type {
   FinishedMessage,
   Message,
@@ -14,44 +12,82 @@ export default class WorkerApi {
   private callbacks: Record<number, (message: FinishedMessage) => void>;
   private worker: Worker;
   private id: number;
+  private isInitialized: boolean;
+  private initializationPromise: Promise<void> | null;
 
   constructor() {
     this.callbacks = {};
     this.id = 0;
+    this.isInitialized = false;
+    this.initializationPromise = null;
     this.worker = new Worker(new URL("./pyodide-worker", import.meta.url), {
       type: "classic",
     });
     this.worker.onmessage = (event) => this.onMessage(event.data);
+    this.worker.onerror = (error) => {
+      console.error("Worker error:", error);
+    };
   }
 
   private invokeCallback(message: FinishedMessage) {
     const id = message.id;
     const onSuccess = this.callbacks[id];
-    delete this.callbacks[id];
-    onSuccess(message);
+    if (onSuccess) {
+      delete this.callbacks[id];
+      onSuccess(message);
+    }
   }
 
   onStderr(message: StderrMessage) {
-    console.error(message.stderr);
+    console.error("Python stderr:", message.stderr);
   }
 
   onStdout(message: StdoutMessage) {
-    console.log(message.stdout);
+    console.log("Python stdout:", message.stdout);
   }
 
-  async addFile(name: string, fileData: Uint8Array) {
-    await this.sendMessageAwaitable({
+  /**
+   * Wait for the worker to be initialized before running commands
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.isInitialized) return;
+
+    if (!this.initializationPromise) {
+      this.initializationPromise = new Promise((resolve) => {
+        // Wait for first successful operation to consider initialized
+        const checkInit = setInterval(() => {
+          if (this.isInitialized) {
+            clearInterval(checkInit);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+
+    return this.initializationPromise;
+  }
+
+  async addFile(name: string, fileData: Uint8Array): Promise<void> {
+    const result = await this.sendMessageAwaitable({
       kind: "addFile",
       name,
       fileData,
     });
+
+    if (result.error) {
+      throw new Error(`Failed to add file ${name}: ${result.error}`);
+    }
   }
 
-  async removeFile(name: string) {
-    await this.sendMessageAwaitable({
+  async removeFile(name: string): Promise<void> {
+    const result = await this.sendMessageAwaitable({
       kind: "removeFile",
       name,
     });
+
+    if (result.error) {
+      throw new Error(`Failed to remove file ${name}: ${result.error}`);
+    }
   }
 
   async fileContent(name: string): Promise<Uint8Array> {
@@ -60,8 +96,13 @@ export default class WorkerApi {
       name,
     });
 
-    if (message.error !== undefined || message.result === undefined)
-      throw new Error(message.error);
+    if (message.error !== undefined) {
+      throw new Error(`Failed to read file ${name}: ${message.error}`);
+    }
+
+    if (message.result === undefined) {
+      throw new Error(`File ${name} not found or empty`);
+    }
 
     return message.result;
   }
@@ -69,6 +110,7 @@ export default class WorkerApi {
   private onMessage(message: Message) {
     switch (message.kind) {
       case "finished":
+        this.isInitialized = true;
         this.invokeCallback(message);
         break;
       case "stderr":
@@ -82,8 +124,17 @@ export default class WorkerApi {
 
   private async sendMessageAwaitable(data: any): Promise<FinishedMessage> {
     this.id = (this.id + 1) % Number.MAX_SAFE_INTEGER;
-    return new Promise((onSuccess) => {
-      this.callbacks[this.id] = onSuccess;
+    return new Promise((onSuccess, reject) => {
+      const timeoutId = setTimeout(() => {
+        delete this.callbacks[this.id];
+        reject(new Error("Worker operation timed out after 60 seconds"));
+      }, 60000); // 60 second timeout
+
+      this.callbacks[this.id] = (message: FinishedMessage) => {
+        clearTimeout(timeoutId);
+        onSuccess(message);
+      };
+
       this.worker.postMessage({
         id: this.id,
         ...data,
@@ -100,5 +151,13 @@ export default class WorkerApi {
       python,
       options,
     });
+  }
+
+  /**
+   * Terminate the worker and cleanup resources
+   */
+  terminate(): void {
+    this.worker.terminate();
+    this.callbacks = {};
   }
 }

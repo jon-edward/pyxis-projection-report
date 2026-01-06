@@ -2,7 +2,7 @@
 
 import type { Message, RunMessage } from "./MessageTypes";
 
-// Define the global Pyodide type and loadPyodide function, imported pyodide
+// Import Pyodide from CDN
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js");
 declare function loadPyodide(): Promise<any>;
 
@@ -14,40 +14,55 @@ function sendStderr(stderr: Uint8Array) {
   self.postMessage({ kind: "stderr", stderr });
 }
 
-async function initPyodide() {
-  /**
-   * Pyodide initialization handling dependencies.
-   * Load the Pyodide module and initialize it. Returns a promise that
-   * resolves to the Pyodide instance.
-   */
-  const pyodide = await loadPyodide();
-  pyodide.setStdout({ batched: sendStdout });
-  pyodide.setStderr({ batched: sendStderr });
+function sendProgress(message: string) {
+  console.log(`[Pyodide] ${message}`);
+}
 
-  await pyodide.runPythonAsync(`
+async function initPyodide() {
+  try {
+    sendProgress("Loading Pyodide...");
+    const pyodide = await loadPyodide();
+
+    pyodide.setStdout({ batched: sendStdout });
+    pyodide.setStderr({ batched: sendStderr });
+
+    sendProgress("Unpacking Python library...");
+    await pyodide.runPythonAsync(`
 from pyodide.http import pyfetch
+import sys
 response = await pyfetch("/lib.zip")
 await response.unpack_archive()
 `);
 
-  await pyodide.loadPackage("micropip");
-  await pyodide.runPythonAsync(`
+    sendProgress("Loading package manager...");
+    await pyodide.loadPackage("micropip");
+
+    sendProgress("Installing Python dependencies...");
+    await pyodide.runPythonAsync(`
 import micropip
-with open("requirements.txt") as f:
-  requirements = [req.strip() for req in f.readlines() if req.strip()]
-for req in requirements:
-  print(f"Installing {req}")
-  await micropip.install(req)
-  print(f"Installed {req}")
+import sys
+
+try:
+    with open("requirements.txt") as f:
+        requirements = [req.strip() for req in f.readlines() if req.strip() and not req.startswith('#')]
+    for req in requirements:
+        await micropip.install(req)
+except Exception as e:
+    print(f"Error installing dependencies: {e}", file=sys.stderr)
+    raise
 `);
 
-  return pyodide;
+    sendProgress("Pyodide initialized successfully");
+    return pyodide;
+  } catch (error: any) {
+    sendProgress(`Failed to initialize Pyodide: ${error.message}`);
+    throw error;
+  }
 }
 
 const pyodidePromise = initPyodide();
 
 async function onRun(message: RunMessage) {
-  let result: any = null;
   const { python, options, id } = message;
 
   try {
@@ -65,43 +80,86 @@ async function onRun(message: RunMessage) {
         ...options.locals,
       });
     }
-    result = await pyodide.runPythonAsync(python, pyOptions);
-  } catch (error: any) {
-    self.postMessage({ kind: "finished", error: error.message, id });
-    return;
-  }
 
-  self.postMessage({ kind: "finished", result, id });
+    const result = await pyodide.runPythonAsync(python, pyOptions);
+    self.postMessage({ kind: "finished", result, id });
+  } catch (error: any) {
+    console.error("Python execution error:", error);
+    self.postMessage({
+      kind: "finished",
+      error: error.message || "Unknown Python execution error",
+      id,
+    });
+  }
 }
 
 self.onmessage = async (event: MessageEvent<Message>) => {
   const { data } = event;
 
-  switch (data.kind) {
-    case "addFile": {
-      const { name, fileData, id } = data;
-      const pyodide = await pyodidePromise;
-      pyodide.FS.writeFile(name, fileData);
-      self.postMessage({ kind: "finished", id });
-      break;
+  try {
+    switch (data.kind) {
+      case "addFile": {
+        const { name, fileData, id } = data;
+        const pyodide = await pyodidePromise;
+
+        // Ensure directory exists
+        const dirPath = name.substring(0, name.lastIndexOf("/"));
+        if (dirPath) {
+          pyodide.FS.mkdirTree(dirPath);
+        }
+
+        pyodide.FS.writeFile(name, fileData);
+        self.postMessage({ kind: "finished", id });
+        break;
+      }
+      case "removeFile": {
+        const { name, id } = data;
+        const pyodide = await pyodidePromise;
+
+        try {
+          pyodide.FS.unlink(name);
+          self.postMessage({ kind: "finished", id });
+        } catch (error: any) {
+          // File might not exist, that's okay
+          self.postMessage({ kind: "finished", id });
+        }
+        break;
+      }
+      case "fileContent": {
+        const { name, id } = data;
+        const pyodide = await pyodidePromise;
+
+        try {
+          const fileData = pyodide.FS.readFile(name);
+          self.postMessage({ kind: "finished", result: fileData, id });
+        } catch (error: any) {
+          self.postMessage({
+            kind: "finished",
+            error: `File not found: ${name}`,
+            id,
+          });
+        }
+        break;
+      }
+      case "run": {
+        await onRun(data);
+        break;
+      }
     }
-    case "removeFile": {
-      const { name, id } = data;
-      const pyodide = await pyodidePromise;
-      pyodide.FS.unlink(name);
-      self.postMessage({ kind: "finished", id });
-      break;
-    }
-    case "fileContent": {
-      const { name, id } = data;
-      const pyodide = await pyodidePromise;
-      const fileData = pyodide.FS.readFile(name);
-      self.postMessage({ kind: "finished", result: fileData, id });
-      break;
-    }
-    case "run": {
-      await onRun(data);
-      break;
+  } catch (error: any) {
+    console.error("Worker error:", error);
+    if ("id" in data) {
+      self.postMessage({
+        kind: "finished",
+        error: error.message || "Unknown worker error",
+        id: data.id,
+      });
     }
   }
+};
+
+// Handle unhandled errors in the worker
+self.onerror = (error) => {
+  console.error("Unhandled worker error:", error);
+  return false;
 };
