@@ -2,7 +2,7 @@
   "name": "vite-template-solid",
   "version": "0.0.0",
   "description": "",
-  "type": "module",
+  "main": "src/index.tsx",
   "scripts": {
     "_prepare_lib": "node scripts/prepare-lib.js",
     "start": "npm run _prepare_lib && vite",
