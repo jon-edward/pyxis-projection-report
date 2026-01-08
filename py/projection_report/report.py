@@ -231,8 +231,9 @@ class PyxisInventoryReport(FPDF):
         self.set_x(left_margin + self.style.indent_size)
         first_activity_str = location_report.first_activity.strftime(self.style.short_date_format)
         last_activity_str = location_report.last_activity.strftime(self.style.short_date_format)
-        self.cell(line_w / 2, 6, f'First Activity: {first_activity_str}', 0, 0)
-        self.cell(0, 6, f'Last Activity: {last_activity_str}', new_x="LMARGIN", new_y="NEXT", align='L')
+        self.cell(line_w / 3, 6, f'First Activity: {first_activity_str}')
+        self.cell(line_w / 3, 6, f'Last Activity: {last_activity_str}')
+        self.cell(line_w / 3, 6, f'Average Weekly Usage: {location_report.avg_daily_usage * 7:.1f}', new_x="LMARGIN", new_y="NEXT", align='L')
 
         underscore_size = self.get_string_width("_")
 
