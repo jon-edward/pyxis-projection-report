@@ -127,8 +127,8 @@ export default class WorkerApi {
     return new Promise((onSuccess, reject) => {
       const timeoutId = setTimeout(() => {
         delete this.callbacks[this.id];
-        reject(new Error("Worker operation timed out after 60 seconds"));
-      }, 60000); // 60 second timeout
+        reject(new Error("Worker operation timed out after 10 minutes"));
+      }, 600000); // 10 minute timeout
 
       this.callbacks[this.id] = (message: FinishedMessage) => {
         clearTimeout(timeoutId);
