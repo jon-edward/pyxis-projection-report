@@ -1,3 +1,18 @@
+import urllib.request
+import http.client
+
+def create_dummy(name: str):
+    def _raise_used_error():
+        raise TypeError(f"{name} is a dummy class for import and should not be instantiated")
+    class Dummy:
+        def __init__(self, *args, **kwargs):
+            _raise_used_error()
+    return Dummy
+
+# Create dummy classes for FPDF required imports
+urllib.request.HTTPSHandler = create_dummy("urllib.request.HTTPSHandler")
+http.client.HTTPSConnection = create_dummy("http.client.HTTPSConnection")
+
 from fpdf import FPDF
 from datetime import datetime
 from dataclasses import dataclass
