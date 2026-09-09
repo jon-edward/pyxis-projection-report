@@ -15,7 +15,7 @@ const ReportConfigSchema = v.object({
   includeUnordered: v.boolean(),
   includeMinZero: v.boolean(),
   criticalThreshold: v.number(),
-  maxDays: v.number(),
+  maxDays: v.optional(v.number()),
   devices: v.array(v.pipe(v.string(), v.trim())),
   exclude: v.array(v.pipe(v.string(), v.trim())),
   usageFile: v.file(),
@@ -91,10 +91,11 @@ interface NumberFieldProps {
   label: string;
   description?: string;
   Field: any;
+  allowEmpty?: boolean;
 }
 
 function NumberField(props: NumberFieldProps) {
-  const { name, label, description, Field } = props;
+  const { name, label, description, Field, allowEmpty } = props;
 
   return (
     <div class="number-field">
@@ -110,7 +111,9 @@ function NumberField(props: NumberFieldProps) {
               id={name}
               class="number-input"
               {...inputProps}
-              value={field.value ?? 0}
+              value={
+                field.value ?? (allowEmpty ? "" : 0)
+              }
             />
           </div>
         )}
@@ -356,7 +359,7 @@ export default function App() {
         include_unordered: result.includeUnordered,
         include_min_zero: result.includeMinZero,
         critical_threshold: result.criticalThreshold,
-        max_days: result.maxDays,
+        max_days: result.maxDays ?? null,
         devices: result.devices.filter((d) => d.length > 0),
         exclude: result.exclude.filter((d) => d.length > 0),
       };
@@ -519,8 +522,9 @@ create_report(config)
             <NumberField
               name="maxDays"
               label="Maximum Days"
-              description="Maximum number of days to project into the future"
+              description="Maximum number of days to project into the future. Leave blank to not filter by maximum days at all — items with no usage over the period will still be included."
               Field={Field}
+              allowEmpty
             />
           </Section>
 
