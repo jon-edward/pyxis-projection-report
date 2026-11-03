@@ -167,7 +167,7 @@ class LocationReport:
         Returns:
             Minimum quantity threshold or None if not set
         """
-        if not self.inventory_item or not self.inventory_item.qty_min:
+        if self.inventory_item is None:
             return None
         return self.inventory_item.qty_min
     
@@ -179,6 +179,6 @@ class LocationReport:
         Returns:
             Maximum quantity threshold or None if not set
         """
-        if not self.inventory_item or not self.inventory_item.qty_max:
+        if self.inventory_item is None:
             return None
         return self.inventory_item.qty_max
