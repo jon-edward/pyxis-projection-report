@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 
-from .models import InventoryItem
+from .models import InventoryItem, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +191,8 @@ class UsageLoader:
             df = DataNormalizer.normalize(df)
             self._validate_usage_data(df)
             df.dt = pd.to_datetime(df.dt)
+            df["transaction_type"] = self._normalize_transaction_types(df.transaction_type)
+            self._validate_removals(df)
             logger.info(f"Loaded {len(df)} usage records for {df.device.nunique()} devices")
             return df
         except Exception as e:
@@ -198,6 +200,29 @@ class UsageLoader:
                 f"Failed to load usage data: {e}",
                 file_path=self.usage_path,
                 original_error=e
+            )
+
+    @staticmethod
+    def _normalize_transaction_types(types: pd.Series) -> pd.Series:
+        """Trim whitespace and match known types ("remove" -> "Remove")."""
+        known = {t.value.lower(): t.value for t in TransactionType}
+        return types.astype(str).str.strip().map(lambda s: known.get(s.lower(), s))
+
+    def _validate_removals(self, df: pd.DataFrame) -> None:
+        """
+        Usage is measured from Remove transactions, so there must be some.
+        Without any, the file most likely uses other labels, and every item
+        would silently show no usage.
+
+        Raises:
+            DataLoadError: If there are no Remove transactions
+        """
+        removal = TransactionType.REMOVE.value
+        if not (df.transaction_type == removal).any():
+            found = sorted(df.transaction_type.unique())
+            raise DataLoadError(
+                f"No '{removal}' transactions found. Transaction types in file: {found}",
+                file_path=self.usage_path
             )
 
     def _validate_usage_data(self, df: pd.DataFrame) -> None:

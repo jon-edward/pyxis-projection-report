@@ -11,7 +11,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .config import ReportConfig
-from .models import LocationReport
+from .models import LocationReport, ReportContext, USAGE_NOTES
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,8 @@ COLUMNS: list[tuple[str, Callable[[LocationReport], Any], int, Optional[str]]] =
     ("First Activity", lambda r: r.first_activity.to_pydatetime(), 14, "yyyy-mm-dd"),
     ("Last Activity", lambda r: r.last_activity.to_pydatetime(), 14, "yyyy-mm-dd"),
     ("Qty Removed", lambda r: r.qty_removed, 12, "0"),
+    ("Removals", lambda r: r.removal_count, 10, "0"),
+    ("Low Data", lambda r: "Yes" if r.low_data else "No", 10, None),
 ]
 
 
@@ -58,7 +60,9 @@ def _yes_no(value: bool) -> str:
     return "Yes" if value else "No"
 
 
-def _summary_rows(config: ReportConfig, sections: Sections) -> list[tuple[str, Any]]:
+def _summary_rows(
+    config: ReportConfig, sections: Sections, context: ReportContext
+) -> list[tuple[str, Any]]:
     """Same settings and totals as the PDF summary."""
     total_items = sum(len(reports) for _, reports in sections)
     total_critical = sum(1 for _, reports in sections for r in reports if r.is_critical)
@@ -75,6 +79,11 @@ def _summary_rows(config: ReportConfig, sections: Sections) -> list[tuple[str, A
         ("Include Items With a Min of 0", _yes_no(config.include_min_zero)),
         ("Critical Threshold", f"{config.critical_threshold:.1f} days"),
         ("Maximum Days Until Stockout", max_days),
+    ]
+    usage_window = context.usage_window_text()
+    if usage_window:
+        rows.append(("Usage Window", usage_window))
+    rows += [
         ("Include Items Without an Active Order", _yes_no(config.include_unordered)),
         ("Only Include Critical Items", _yes_no(config.only_critical)),
     ]
@@ -85,7 +94,12 @@ def _summary_rows(config: ReportConfig, sections: Sections) -> list[tuple[str, A
     return rows
 
 
-def write_excel(config: ReportConfig, sections: Sections, path: Path) -> None:
+def write_excel(
+    config: ReportConfig,
+    sections: Sections,
+    path: Path,
+    context: Optional[ReportContext] = None,
+) -> None:
     """
     Write the report to an .xlsx file.
 
@@ -93,7 +107,9 @@ def write_excel(config: ReportConfig, sections: Sections, path: Path) -> None:
         config: Report configuration (shown on the Summary sheet)
         sections: (device name, location reports) pairs, already sorted
         path: Output file path
+        context: Facts about the data behind the report (usage window)
     """
+    context = context if context is not None else ReportContext()
     logger.info(f"Writing Excel report: {path}")
     wb = Workbook()
 
@@ -128,11 +144,16 @@ def write_excel(config: ReportConfig, sections: Sections, path: Path) -> None:
     summary.append(["Pyxis Inventory Report"])
     summary["A1"].font = Font(bold=True, size=14)
     summary.append([])
-    for label, value in _summary_rows(config, sections):
+    for label, value in _summary_rows(config, sections, context):
         summary.append([label, value])
         summary.cell(row=summary.max_row, column=1).font = Font(bold=True)
+    summary.append([])
+    summary.append(["Notes"])
+    summary.cell(row=summary.max_row, column=1).font = Font(bold=True)
+    for note in USAGE_NOTES:
+        summary.append([note])
     summary.column_dimensions["A"].width = 38
-    summary.column_dimensions["B"].width = 26
+    summary.column_dimensions["B"].width = 36
     wb.move_sheet("Summary", offset=-1)
     wb.active = 0
 
