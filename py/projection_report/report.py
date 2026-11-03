@@ -17,6 +17,7 @@ from fpdf import FPDF
 from datetime import datetime
 from dataclasses import dataclass
 import logging
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -230,7 +231,11 @@ class PyxisInventoryReport(FPDF):
         else:
             stockout_w_margin = 0
 
-        stockout_str = f"{location_report.days_until_stockout:.1f}"
+        # No usage means an infinite projection; don't print "inf".
+        if math.isinf(location_report.days_until_stockout):
+            stockout_str = "No usage"
+        else:
+            stockout_str = f"{location_report.days_until_stockout:.1f}"
         self.cell(
             self.get_string_width(stockout_str) + stockout_w_margin * 2, 
             6, 
