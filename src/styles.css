@@ -217,6 +217,26 @@
   border-color: #3b82f6;
 }
 
+/* Select Field */
+.select-field {
+  margin-bottom: 1rem;
+}
+
+.select-input {
+  display: block;
+  padding: 0.625rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  font-size: 1rem;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.select-input:focus {
+  border-color: #3b82f6;
+}
+
 /* File Field */
 .file-field {
   margin-bottom: 1rem;

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+OUTPUT_FORMATS = ("pdf", "excel")
+
 
 @dataclass
 class ReportConfig:
@@ -19,7 +21,9 @@ class ReportConfig:
         exclude: Tuple of device name prefixes to exclude
         max_days: Maximum days until stockout to include in report (None = no limit)
         only_critical: Only include critical items in report
-        
+        output_format: "pdf" or "excel" (Excel skips PDF rendering, which is
+            much faster for large reports)
+
     Examples:
         >>> config = ReportConfig(devices=('EMER',), critical_threshold=5.0)
         >>> config.should_include_device('EMER-01')
@@ -34,6 +38,7 @@ class ReportConfig:
     exclude: tuple[str, ...] = ()
     max_days: float | None = 5.0
     only_critical: bool = False
+    output_format: str = "pdf"
 
     def __post_init__(self) -> None:
         """Validate and normalize configuration values."""
@@ -47,6 +52,15 @@ class ReportConfig:
             raise ValueError("Critical threshold must be non-negative")
         if self.max_days is not None and self.max_days <= 0:
             raise ValueError("Max days must be positive")
+        if self.output_format not in OUTPUT_FORMATS:
+            raise ValueError(
+                f"Output format must be one of {OUTPUT_FORMATS}, got {self.output_format!r}"
+            )
+
+    @property
+    def excel_path(self) -> Path:
+        """Excel output path: output_path with an .xlsx suffix."""
+        return self.output_path.with_suffix(".xlsx")
 
     def should_include_device(self, device: str) -> bool:
         """
