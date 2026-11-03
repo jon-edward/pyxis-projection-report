@@ -163,7 +163,11 @@ class PyxisInventoryReport(FPDF):
         self.cell(0, 6, f"Critical Threshold: {self.config.critical_threshold:.1f} days", new_x="LMARGIN", new_y="NEXT")
 
         self.set_x(left_margin + self.style.indent_size)
-        self.cell(0, 6, f"Maximum Days Until Stockout: {self.config.max_days:.1f} days", new_x="LMARGIN", new_y="NEXT")
+        max_days_str = (
+            "No limit" if self.config.max_days is None
+            else f"{self.config.max_days:.1f} days"
+        )
+        self.cell(0, 6, f"Maximum Days Until Stockout: {max_days_str}", new_x="LMARGIN", new_y="NEXT")
 
         self.set_x(left_margin + self.style.indent_size)
         self.cell(0, 6, f"Include Orders Without an Active Order: {'Yes' if self.config.include_unordered else 'No'}", new_x="LMARGIN", new_y="NEXT")

@@ -99,7 +99,12 @@ class MetricsGenerator:
             return False
         if self.config.only_critical and not report.is_critical:
             return False
-        return not (report.days_until_stockout > self.config.max_days)
+        if (
+            self.config.max_days is not None
+            and report.days_until_stockout > self.config.max_days
+        ):
+            return False
+        return True
     
     def _create_location_report(
         self,

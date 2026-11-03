@@ -17,7 +17,7 @@ class ReportConfig:
         critical_threshold: Days threshold for critical items
         devices: Tuple of device name prefixes to include (empty = all)
         exclude: Tuple of device name prefixes to exclude
-        max_days: Maximum days until stockout to include in report
+        max_days: Maximum days until stockout to include in report (None = no limit)
         only_critical: Only include critical items in report
         
     Examples:
@@ -32,7 +32,7 @@ class ReportConfig:
     critical_threshold: float = 3.0
     devices: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
-    max_days: float = 5.0
+    max_days: float | None = 5.0
     only_critical: bool = False
 
     def __post_init__(self) -> None:
@@ -45,7 +45,7 @@ class ReportConfig:
         # Validation
         if self.critical_threshold < 0:
             raise ValueError("Critical threshold must be non-negative")
-        if self.max_days <= 0:
+        if self.max_days is not None and self.max_days <= 0:
             raise ValueError("Max days must be positive")
 
     def should_include_device(self, device: str) -> bool:
