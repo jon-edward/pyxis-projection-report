@@ -24,7 +24,7 @@ from .config import ReportConfig
 from .data_loader import InventoryLoader, UsageLoader
 from .excel import write_excel
 from .metrics import MetricsGenerator
-from .models import LocationReport
+from .models import LocationReport, ReportContext, USAGE_NOTES
 
 logger = logging.getLogger(__name__)
 
@@ -83,18 +83,21 @@ class PyxisInventoryReport(FPDF):
         config: Report configuration
         metrics: Dictionary of device reports
         style: Style configuration for the report
+        context: Facts about the data behind the report (usage window)
     """
-    
+
     def __init__(
-        self, 
-        config: ReportConfig, 
-        metrics: dict[str, list[LocationReport]], 
-        style: ReportStyle | None = None
+        self,
+        config: ReportConfig,
+        metrics: dict[str, list[LocationReport]],
+        style: ReportStyle | None = None,
+        context: ReportContext | None = None
     ):
         super().__init__()
         self.config = config
         self.metrics = metrics
         self.style = style if style is not None else ReportStyle()
+        self.context = context if context is not None else ReportContext()
     
     def header(self) -> None:
         """Generate report header with title and timestamp."""
@@ -168,6 +171,11 @@ class PyxisInventoryReport(FPDF):
             else f"{self.config.max_days:.1f} days"
         )
         self.cell(0, 6, f"Maximum Days Until Stockout: {max_days_str}", new_x="LMARGIN", new_y="NEXT")
+
+        usage_window = self.context.usage_window_text(self.style.short_date_format)
+        if usage_window:
+            self.set_x(left_margin + self.style.indent_size)
+            self.cell(0, 6, f"Usage Window: {usage_window}", new_x="LMARGIN", new_y="NEXT")
 
         self.set_x(left_margin + self.style.indent_size)
         self.cell(0, 6, f"Include Orders Without an Active Order: {'Yes' if self.config.include_unordered else 'No'}", new_x="LMARGIN", new_y="NEXT")
@@ -256,9 +264,12 @@ class PyxisInventoryReport(FPDF):
         self.set_x(left_margin + self.style.indent_size)
         first_activity_str = location_report.first_activity.strftime(self.style.short_date_format)
         last_activity_str = location_report.last_activity.strftime(self.style.short_date_format)
-        self.cell(line_w / 3, 6, f'First Activity: {first_activity_str}')
-        self.cell(line_w / 3, 6, f'Last Activity: {last_activity_str}')
-        self.cell(line_w / 3, 6, f'Average Weekly Usage: {location_report.avg_daily_usage * 7:.1f}', new_x="LMARGIN", new_y="NEXT", align='L')
+        usage_str = f'Average Weekly Usage: {location_report.avg_daily_usage * 7:.1f}'
+        if location_report.low_data:
+            usage_str += " (low data)"
+        self.cell(line_w * 0.3, 6, f'First Activity: {first_activity_str}')
+        self.cell(line_w * 0.3, 6, f'Last Activity: {last_activity_str}')
+        self.cell(line_w * 0.4, 6, usage_str, new_x="LMARGIN", new_y="NEXT", align='L')
 
         underscore_size = self.get_string_width("_")
 
@@ -332,11 +343,8 @@ class PyxisInventoryReport(FPDF):
         """Add notes section at end of report."""
         self.set_font(self.style.font_family, 'I', self.style.font_size_small)
         with self.unbreakable() as pdf:
-            pdf.multi_cell(0, 5, 
-                'Notes:\n'
-                '- Estimated days remaining calculated based on average usage\n'
-                '- Critical item drug names are prefixed with an asterisk ("*")'
-            )
+            notes = USAGE_NOTES + ['Critical item drug names are prefixed with an asterisk ("*")']
+            pdf.multi_cell(0, 5, 'Notes:\n' + '\n'.join(f'- {note}' for note in notes))
 
     def export_to_excel(self, path: Path) -> None:
         """
@@ -345,7 +353,7 @@ class PyxisInventoryReport(FPDF):
         Args:
             path: Path for output Excel file
         """
-        write_excel(self.config, _sorted_sections(self.metrics), path)
+        write_excel(self.config, _sorted_sections(self.metrics), path, self.context)
 
 
 # ============================================================================
@@ -380,20 +388,22 @@ def create_report(config: ReportConfig, export_excel: bool = False) -> None:
     logger.info("Starting report generation")
 
     try:
-        metrics = MetricsGenerator(
+        generator = MetricsGenerator(
             config,
             inventory_loader=InventoryLoader(config.reports_dir / "Inventory.xlsx"),
             usage_loader=UsageLoader(config.reports_dir / "Usage.xlsx")
-        ).metrics()
+        )
+        metrics = generator.metrics()
+        context = generator.context
 
         sections = _sorted_sections(metrics)
 
         if config.output_format == "excel":
-            write_excel(config, sections, config.excel_path)
+            write_excel(config, sections, config.excel_path, context)
             logger.info(f"Report generated successfully: {config.excel_path}")
             return
 
-        report = PyxisInventoryReport(config, metrics)
+        report = PyxisInventoryReport(config, metrics, context=context)
         report.add_page()
 
         report.add_summary(metrics)
@@ -411,7 +421,7 @@ def create_report(config: ReportConfig, export_excel: bool = False) -> None:
 
         # Optional Excel export
         if export_excel:
-            write_excel(config, sections, config.excel_path)
+            write_excel(config, sections, config.excel_path, context)
 
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
