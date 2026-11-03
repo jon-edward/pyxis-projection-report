@@ -6,11 +6,11 @@ import type { Message, RunMessage } from "./MessageTypes";
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js");
 declare function loadPyodide(): Promise<any>;
 
-function sendStdout(stdout: Uint8Array) {
+function sendStdout(stdout: string | Uint8Array) {
   self.postMessage({ kind: "stdout", stdout });
 }
 
-function sendStderr(stderr: Uint8Array) {
+function sendStderr(stderr: string | Uint8Array) {
   self.postMessage({ kind: "stderr", stderr });
 }
 

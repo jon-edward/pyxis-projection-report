@@ -1,9 +1,17 @@
 import type {
   FinishedMessage,
   Message,
+  ProgressUpdate,
   StderrMessage,
   StdoutMessage,
 } from "./MessageTypes";
+
+// Python prints progress as "PROGRESS {json}" (see py/projection_report/progress.py).
+const PROGRESS_PREFIX = "PROGRESS ";
+
+function outputText(output: string | Uint8Array): string {
+  return typeof output === "string" ? output : new TextDecoder().decode(output);
+}
 
 /**
  * Defines internal behavior for interacting with a Pyodide worker through an awaitable API.
@@ -14,6 +22,9 @@ export default class WorkerApi {
   private id: number;
   private isInitialized: boolean;
   private initializationPromise: Promise<void> | null;
+
+  /** Called with each progress update printed by the Python code. */
+  onProgress?: (progress: ProgressUpdate) => void;
 
   constructor() {
     this.callbacks = {};
@@ -39,11 +50,22 @@ export default class WorkerApi {
   }
 
   onStderr(message: StderrMessage) {
-    console.error("Python stderr:", message.stderr);
+    console.error("Python stderr:", outputText(message.stderr));
   }
 
   onStdout(message: StdoutMessage) {
-    console.log("Python stdout:", message.stdout);
+    const text = outputText(message.stdout);
+
+    if (text.startsWith(PROGRESS_PREFIX)) {
+      try {
+        this.onProgress?.(JSON.parse(text.slice(PROGRESS_PREFIX.length)));
+      } catch (error) {
+        console.error("Could not read progress line:", text);
+      }
+      return;
+    }
+
+    console.log("Python stdout:", text);
   }
 
   /**

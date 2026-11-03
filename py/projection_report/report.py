@@ -18,6 +18,7 @@ from datetime import datetime
 from dataclasses import dataclass
 import logging
 import math
+from typing import Optional
 from pathlib import Path
 
 from .config import ReportConfig
@@ -25,6 +26,7 @@ from .data_loader import InventoryLoader, UsageLoader
 from .excel import write_excel
 from .metrics import MetricsGenerator
 from .models import LocationReport, ReportContext, USAGE_NOTES
+from .progress import ProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +384,11 @@ def _sorted_sections(
     return sections
 
 
-def create_report(config: ReportConfig, export_excel: bool = False) -> None:
+def create_report(
+    config: ReportConfig,
+    export_excel: bool = False,
+    progress: Optional[ProgressCallback] = None,
+) -> None:
     """
     Generate inventory report from configuration.
 
@@ -392,6 +398,7 @@ def create_report(config: ReportConfig, export_excel: bool = False) -> None:
     Args:
         config: Report configuration
         export_excel: Also write an Excel file next to the PDF
+        progress: Called as progress(stage, done, total) as the work advances
 
     Raises:
         DataLoadError: If data loading fails
@@ -399,18 +406,26 @@ def create_report(config: ReportConfig, export_excel: bool = False) -> None:
     """
     logger.info("Starting report generation")
 
+    def notify(stage: str, done: int = 0, total: int = 0) -> None:
+        if progress:
+            progress(stage, done, total)
+
     try:
+        notify("Reading files")
         generator = MetricsGenerator(
             config,
             inventory_loader=InventoryLoader(config.reports_dir / "Inventory.xlsx"),
-            usage_loader=UsageLoader(config.reports_dir / "Usage.xlsx")
+            usage_loader=UsageLoader(config.reports_dir / "Usage.xlsx"),
+            progress=progress,
         )
         metrics = generator.metrics()
         context = generator.context
 
         sections = _sorted_sections(metrics)
+        total_items = sum(len(reports) for _, reports in sections)
 
         if config.output_format == "excel":
+            notify("Writing Excel", 0, total_items)
             write_excel(config, sections, config.excel_path, context)
             logger.info(f"Report generated successfully: {config.excel_path}")
             return
@@ -420,10 +435,14 @@ def create_report(config: ReportConfig, export_excel: bool = False) -> None:
 
         report.add_summary(metrics)
 
+        items_done = 0
         for device_name, location_reports in sections:
             report.add_section(device_name, location_reports)
+            items_done += len(location_reports)
+            notify("Rendering PDF", items_done, total_items)
 
         report.add_notes()
+        notify("Saving PDF", total_items, total_items)
 
         # Ensure output directory exists
         config.output_path.parent.mkdir(parents=True, exist_ok=True)
