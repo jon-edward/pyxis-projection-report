@@ -25,6 +25,7 @@ from .config import ReportConfig
 from .data_loader import InventoryLoader, UsageLoader
 from .metrics import MetricsGenerator
 from .models import LocationReport
+from .text import ENCODING as TEXT_ENCODING, to_pdf_text
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +93,15 @@ class PyxisInventoryReport(FPDF):
         style: ReportStyle | None = None
     ):
         super().__init__()
+        self.core_fonts_encoding = TEXT_ENCODING
         self.config = config
         self.metrics = metrics
         self.style = style if style is not None else ReportStyle()
-    
+
+    def normalize_text(self, text: str) -> str:
+        """Clean text for the built-in fonts; applies to every string drawn."""
+        return super().normalize_text(to_pdf_text(text))
+
     def header(self) -> None:
         """Generate report header with title and timestamp."""
         self.set_font(self.style.font_family, 'B', self.style.font_size_title)
