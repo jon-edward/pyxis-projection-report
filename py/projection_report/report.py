@@ -181,6 +181,30 @@ class PyxisInventoryReport(FPDF):
 
         self.ln(self.style.line_spacing_items)
     
+    @staticmethod
+    def _location_title(location_report: LocationReport) -> str:
+        critical_prefix = "* " if location_report.is_critical else ""
+        return f"{critical_prefix}{location_report.med_desc} (IEN: {location_report.med_id})"
+
+    def _location_report_height(self, location_report: LocationReport) -> float:
+        """
+        Height in mm that add_location_report advances, including its trailing
+        gap (fpdf2 also page-breaks on that gap). Keep in sync with
+        add_location_report. Predicting page breaks from this is much faster
+        than test-rendering each item, which deep-copies the whole document.
+        """
+        self.set_font(self.style.font_family, 'B', self.style.font_size_body + 1)
+        title_lines = self.multi_cell(
+            0, 7, self._location_title(location_report),
+            align='L', dry_run=True, output="LINES"
+        )
+        # Title lines (7 each), 1 gap, 3 rows of 6, then the trailing gap.
+        return len(title_lines) * 7 + 1 + 3 * 6 + self.style.line_spacing_items
+
+    def _section_start_height(self) -> float:
+        """Height in mm of the device header and device summary, with gaps."""
+        return 10 + 3 + 6 + self.style.line_spacing_items
+
     def add_location_report(self, location_report: LocationReport) -> None:
         """
         Add a single location report item.
@@ -193,13 +217,12 @@ class PyxisInventoryReport(FPDF):
         else:
             self.set_fill_color(255, 255, 255)
         
-        critical_prefix = f"* " if location_report.is_critical else ''
         self.set_font(self.style.font_family, 'B', self.style.font_size_body + 1)
 
         self.multi_cell(
-            0, 7, 
-            f"{critical_prefix}{location_report.med_desc} (IEN: {location_report.med_id})",  
-            new_x="LMARGIN", 
+            0, 7,
+            self._location_title(location_report),
+            new_x="LMARGIN",
             new_y="NEXT", 
             align='L', 
             fill=True
@@ -293,26 +316,26 @@ class PyxisInventoryReport(FPDF):
             location_reports: List of LocationReports for this device
         """
         try:
-            with self.unbreakable() as pdf:
-                pdf.add_device_header(device_name)
-                pdf.add_device_summary(location_reports)
-                if len(location_reports):
-                    pdf.add_location_report(location_reports[0])
-            
-            for report in location_reports[1:]:
-                # Check if the resulting content will trigger a page break 
-                with self.offset_rendering() as dummy:
-                    dummy.add_location_report(report)
-                
-                if dummy.page_break_triggered:
-                    # Add continuation header
+            # Keep the device header, its summary, and the first item together.
+            needed = self._section_start_height()
+            if location_reports:
+                needed += self._location_report_height(location_reports[0])
+            if self.get_y() + needed > self.page_break_trigger:
+                self.add_page()
+
+            self.add_device_header(device_name)
+            self.add_device_summary(location_reports)
+
+            for i, report in enumerate(location_reports):
+                # Start a new page (with a continuation header) if the item won't fit.
+                if i > 0 and (
+                    self.get_y() + self._location_report_height(report)
+                    > self.page_break_trigger
+                ):
                     self.add_page()
                     self.add_device_header(f"{device_name} cont.")
-                    self.add_location_report(report)
-                else:
-                    # Add content on same page
-                    self.add_location_report(report)
-            
+                self.add_location_report(report)
+
             self.ln(self.style.line_spacing_items)
         except Exception as e:
             logger.error(f"Failed to add section for {device_name}: {e}")
