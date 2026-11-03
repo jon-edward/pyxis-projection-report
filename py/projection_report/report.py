@@ -191,6 +191,18 @@ class PyxisInventoryReport(FPDF):
             self.set_x(left_margin + self.style.indent_size)
             self.cell(0, 6, f"Excludes: {', '.join(c.upper() for c in self.config.exclude)}", new_x="LMARGIN", new_y="NEXT")
 
+        if self.context.warnings:
+            self.ln(2)
+            self.set_text_color(*self.style.color_critical_text)
+            self.set_font(self.style.font_family, 'B', self.style.font_size_body)
+            self.cell(0, 6, "Data Warnings", new_x="LMARGIN", new_y="NEXT")
+            self.set_font(self.style.font_family, '', self.style.font_size_small)
+            for warning in self.context.warnings:
+                self.set_x(left_margin + self.style.indent_size)
+                self.multi_cell(0, 5, f"- {warning}", align='L', new_x="LMARGIN", new_y="NEXT")
+            self.set_text_color(*self.style.color_normal_text)
+            self.set_font(self.style.font_family, '', self.style.font_size_body)
+
         self.ln(self.style.line_spacing_items)
     
     def add_location_report(self, location_report: LocationReport) -> None:
