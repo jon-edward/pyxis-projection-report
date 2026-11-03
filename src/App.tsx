@@ -8,15 +8,24 @@ import {
 } from "@modular-forms/solid";
 import * as v from "valibot";
 import WorkerApi from "./WorkerApi";
+import type { ProgressUpdate } from "./MessageTypes";
 import "./styles.css";
 
 const ReportConfigSchema = v.object({
   onlyCritical: v.boolean(),
   includeUnordered: v.boolean(),
   includeMinZero: v.boolean(),
-  criticalThreshold: v.number(),
+  criticalThreshold: v.pipe(
+    v.number("Enter a number of days"),
+    v.minValue(0, "Must be 0 or more")
+  ),
   // A blank number input yields NaN; a cached blank value is null.
-  maxDays: v.nullish(v.union([v.number(), v.nan()])),
+  maxDays: v.nullish(
+    v.union(
+      [v.pipe(v.number(), v.gtValue(0, "Must be greater than 0")), v.nan()],
+      "Enter a number greater than 0, or leave blank"
+    )
+  ),
   devices: v.array(v.pipe(v.string(), v.trim())),
   exclude: v.array(v.pipe(v.string(), v.trim())),
   outputFormat: v.picklist(["pdf", "excel"]),
@@ -128,6 +137,7 @@ function NumberField(props: NumberFieldProps) {
                 field.value ?? (allowEmpty ? "" : 0)
               }
             />
+            {field.error && <div class="field-error">{field.error}</div>}
           </div>
         )}
       </Field>
@@ -352,6 +362,21 @@ function Section(props: {
   );
 }
 
+function formatProgress(p: ProgressUpdate): string {
+  if (!p.total) return `${p.stage}...`;
+  const pct = Math.min(100, Math.round((p.done / p.total) * 100));
+  return `${p.stage}... ${pct}%`;
+}
+
+// Only show Python errors that the user can act on (bad data or settings).
+function pythonErrorDetail(message?: string): string | null {
+  if (!message) return null;
+  const lines = message.trim().split("\n");
+  const last = lines[lines.length - 1];
+  const match = last.match(/^(?:\w+\.)*(DataLoadError|ValueError): (.+)$/);
+  return match ? match[2] : null;
+}
+
 // Main App Component
 export default function App() {
   const cachedConfig = loadCachedConfig();
@@ -366,12 +391,38 @@ export default function App() {
   const [loadingStatus, setLoadingStatus] = createSignal("");
   const [errorMessage, setError] = createSignal("");
   const [successMessage, setSuccess] = createSignal("");
-  const worker = new WorkerApi();
+  const [progressText, setProgressText] = createSignal("");
+
+  const createWorker = () => {
+    const w = new WorkerApi();
+    w.onProgress = (p) => setProgressText(formatProgress(p));
+    return w;
+  };
+  let worker = createWorker();
+
+  // Each run gets an id; canceling bumps it so a stale run stops touching the UI.
+  let runId = 0;
+
+  const handleCancel = () => {
+    runId++;
+    worker.terminate();
+    worker = createWorker();
+    setIsLoading(false);
+    setLoadingStatus("");
+    setProgressText("");
+    setSuccess("");
+    setError("Report generation was canceled.");
+  };
 
   const handleSubmit = async (result: ReportConfig) => {
+    const myRun = ++runId;
+    const isStale = () => myRun !== runId;
+    const activeWorker = worker;
+
     setIsLoading(true);
     setError("");
     setSuccess("");
+    setProgressText("");
 
     // Blank (NaN/null/undefined) means "no limit".
     const maxDays =
@@ -404,15 +455,19 @@ export default function App() {
       setLoadingStatus("Reading files...");
       const inventory = await result.inventoryFile.arrayBuffer();
       const usage = await result.usageFile.arrayBuffer();
+      if (isStale()) return;
 
       setLoadingStatus("Preparing Python environment...");
-      await worker.runPython(
+      await activeWorker.runPython(
         `import os; os.makedirs("reports", exist_ok=True)`
       );
 
       setLoadingStatus("Uploading data files...");
-      await worker.addFile("reports/Inventory.xlsx", new Uint8Array(inventory));
-      await worker.addFile("reports/Usage.xlsx", new Uint8Array(usage));
+      await activeWorker.addFile(
+        "reports/Inventory.xlsx",
+        new Uint8Array(inventory)
+      );
+      await activeWorker.addFile("reports/Usage.xlsx", new Uint8Array(usage));
 
       const pyResult = {
         only_critical: result.onlyCritical,
@@ -428,14 +483,15 @@ export default function App() {
       setLoadingStatus(
         isExcel ? "Generating Excel workbook..." : "Generating report..."
       );
-      const report = await worker.runPython(
+      const report = await activeWorker.runPython(
         `
 import json
 from projection_report.config import ReportConfig
+from projection_report.progress import print_progress
 from projection_report.report import create_report
 
 config = ReportConfig(**json.loads(config_string))
-create_report(config)
+create_report(config, progress=print_progress)
 `,
         { locals: { config_string: JSON.stringify(pyResult) } }
       );
@@ -445,8 +501,9 @@ create_report(config)
         throw new Error(report.error || "Error running Python code");
       }
 
+      setProgressText("");
       setLoadingStatus("Downloading report...");
-      const fileData: Uint8Array = await worker.fileContent(
+      const fileData: Uint8Array = await activeWorker.fileContent(
         `reports/${outputName}`
       );
 
@@ -467,22 +524,29 @@ create_report(config)
         document.body.removeChild(link);
       }, 0);
 
-      await worker.removeFile("reports/Inventory.xlsx");
-      await worker.removeFile("reports/Usage.xlsx");
-      await worker.removeFile(`reports/${outputName}`);
+      await activeWorker.removeFile("reports/Inventory.xlsx");
+      await activeWorker.removeFile("reports/Usage.xlsx");
+      await activeWorker.removeFile(`reports/${outputName}`);
 
+      if (isStale()) return;
       setSuccess(
         "Report generated successfully! Your download should begin shortly."
       );
     } catch (error: any) {
       console.error(error.message);
+      if (isStale()) return;
+      const detail = pythonErrorDetail(error?.message);
       setError(
-        "Error generating report. Please check your input files and try again."
+        detail
+          ? `Error generating report: ${detail}`
+          : "Error generating report. Please check your input files and try again."
       );
     }
 
+    if (isStale()) return;
     setIsLoading(false);
     setLoadingStatus("");
+    setProgressText("");
   };
 
   return (
@@ -643,12 +707,17 @@ create_report(config)
               {isLoading() ? (
                 <div class="loading-content">
                   <div class="spinner" />
-                  <span>{loadingStatus()}</span>
+                  <span>{progressText() || loadingStatus()}</span>
                 </div>
               ) : (
                 "Generate Report"
               )}
             </button>
+            <Show when={isLoading()}>
+              <button type="button" class="btn-cancel" onClick={handleCancel}>
+                Cancel
+              </button>
+            </Show>
           </div>
         </Form>
 

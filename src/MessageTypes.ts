@@ -33,14 +33,22 @@ export interface FileContentResult {
   error?: string;
 }
 
+// Pyodide passes each line of output as a string; bytes are accepted too.
 export interface StderrMessage {
   kind: "stderr";
-  stderr: Uint8Array;
+  stderr: string | Uint8Array;
 }
 
 export interface StdoutMessage {
   kind: "stdout";
-  stdout: Uint8Array;
+  stdout: string | Uint8Array;
+}
+
+/** Progress reported by the Python report code (see py/projection_report/progress.py). */
+export interface ProgressUpdate {
+  stage: string;
+  done: number;
+  total: number;
 }
 
 export interface RunMessage {
