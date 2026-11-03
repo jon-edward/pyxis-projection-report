@@ -49,6 +49,15 @@ class MetricsGenerator:
         window = (usage_df.dt.min(), usage_df.dt.max())
         self.context = ReportContext(usage_window=window)
 
+        conflicts = self.inventory_loader.conflicting_locations
+        if conflicts:
+            self._warn(
+                f"{len(conflicts)} inventory location(s) appear more than once with "
+                f"different values; the last row is used "
+                f"(for example: {self._examples(conflicts)})"
+            )
+
+        missing_inventory = []
         device_reports = defaultdict(list)
         id_to_desc = self._build_id_map(usage_df)
         
@@ -63,6 +72,10 @@ class MetricsGenerator:
             device_df = usage_df[usage_df.device == device].sort_values(by=["med_desc"])
             
             for (device_location, med_id), group in device_df.groupby(["device_location", "med_id"]):
+                if device_location not in inventory_items:
+                    missing_inventory.append(f"{device} {device_location}")
+                    continue
+
                 med_id = str(med_id)
                 report = self._create_location_report(
                     device, device_location, med_id, group,
@@ -73,11 +86,27 @@ class MetricsGenerator:
                 if report and self._should_include_report(report):
                     device_reports[device].append(report)
 
+        if missing_inventory:
+            self._warn(
+                f"{len(missing_inventory)} usage location(s) have no matching inventory row "
+                f"and are not in the report (for example: {self._examples(missing_inventory)})"
+            )
+
         # Remove empty devices
         result = {k: v for k, v in device_reports.items() if v}
         logger.info(f"Generated reports for {len(result)} devices with {sum(len(v) for v in result.values())} total items")
         return result
     
+    def _warn(self, message: str) -> None:
+        """Record a data warning for the report summary and log it."""
+        logger.warning(message)
+        self.context.warnings.append(message)
+
+    @staticmethod
+    def _examples(values: list[str], limit: int = 5) -> str:
+        shown = ", ".join(str(v) for v in values[:limit])
+        return shown + ", ..." if len(values) > limit else shown
+
     def _build_id_map(self, df: pd.DataFrame) -> dict[str, str]:
         """
         Build medication ID to description mapping.

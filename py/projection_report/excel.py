@@ -91,6 +91,8 @@ def _summary_rows(
         rows.append(("Includes", ", ".join(d.upper() for d in config.devices)))
     if config.exclude:
         rows.append(("Excludes", ", ".join(d.upper() for d in config.exclude)))
+    for warning in context.warnings:
+        rows.append(("Data Warning", warning))
     return rows
 
 
@@ -147,6 +149,9 @@ def write_excel(
     for label, value in _summary_rows(config, sections, context):
         summary.append([label, value])
         summary.cell(row=summary.max_row, column=1).font = Font(bold=True)
+        if label == "Data Warning":
+            for col in (1, 2):
+                summary.cell(row=summary.max_row, column=col).font = Font(bold=col == 1, color="C80000")
     summary.append([])
     summary.append(["Notes"])
     summary.cell(row=summary.max_row, column=1).font = Font(bold=True)

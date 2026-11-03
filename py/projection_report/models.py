@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from functools import cached_property
 from enum import Enum
@@ -30,8 +30,10 @@ class ReportContext:
 
     Attributes:
         usage_window: (start, end) of the usage data, shared by all locations
+        warnings: Data problems that change what the report shows
     """
     usage_window: Optional[tuple[pd.Timestamp, pd.Timestamp]] = None
+    warnings: list[str] = field(default_factory=list)
 
     def usage_window_text(self, date_format: str = "%Y-%m-%d") -> Optional[str]:
         """Usage window as text, e.g. "2026-10-04 to 2026-11-03 (30.0 days)"."""
