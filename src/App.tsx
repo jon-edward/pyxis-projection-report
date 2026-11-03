@@ -15,7 +15,8 @@ const ReportConfigSchema = v.object({
   includeUnordered: v.boolean(),
   includeMinZero: v.boolean(),
   criticalThreshold: v.number(),
-  maxDays: v.optional(v.number()),
+  // A blank number input yields NaN; a cached blank value is null.
+  maxDays: v.nullish(v.union([v.number(), v.nan()])),
   devices: v.array(v.pipe(v.string(), v.trim())),
   exclude: v.array(v.pipe(v.string(), v.trim())),
   usageFile: v.file(),
@@ -328,13 +329,19 @@ export default function App() {
     setError("");
     setSuccess("");
 
+    // Blank (NaN/null/undefined) means "no limit".
+    const maxDays =
+      typeof result.maxDays === "number" && !Number.isNaN(result.maxDays)
+        ? result.maxDays
+        : null;
+
     // Save configuration to cache (excluding files)
     const configToCache = {
       onlyCritical: result.onlyCritical,
       includeUnordered: result.includeUnordered,
       includeMinZero: result.includeMinZero,
       criticalThreshold: result.criticalThreshold,
-      maxDays: result.maxDays,
+      maxDays,
       devices: result.devices,
       exclude: result.exclude,
     };
@@ -359,7 +366,7 @@ export default function App() {
         include_unordered: result.includeUnordered,
         include_min_zero: result.includeMinZero,
         critical_threshold: result.criticalThreshold,
-        max_days: result.maxDays ?? null,
+        max_days: maxDays,
         devices: result.devices.filter((d) => d.length > 0),
         exclude: result.exclude.filter((d) => d.length > 0),
       };

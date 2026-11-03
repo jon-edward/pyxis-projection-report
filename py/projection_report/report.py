@@ -17,6 +17,7 @@ from fpdf import FPDF
 from datetime import datetime
 from dataclasses import dataclass
 import logging
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -163,7 +164,11 @@ class PyxisInventoryReport(FPDF):
         self.cell(0, 6, f"Critical Threshold: {self.config.critical_threshold:.1f} days", new_x="LMARGIN", new_y="NEXT")
 
         self.set_x(left_margin + self.style.indent_size)
-        self.cell(0, 6, f"Maximum Days Until Stockout: {self.config.max_days:.1f} days", new_x="LMARGIN", new_y="NEXT")
+        max_days_str = (
+            "No limit" if self.config.max_days is None
+            else f"{self.config.max_days:.1f} days"
+        )
+        self.cell(0, 6, f"Maximum Days Until Stockout: {max_days_str}", new_x="LMARGIN", new_y="NEXT")
 
         self.set_x(left_margin + self.style.indent_size)
         self.cell(0, 6, f"Include Orders Without an Active Order: {'Yes' if self.config.include_unordered else 'No'}", new_x="LMARGIN", new_y="NEXT")
@@ -226,7 +231,11 @@ class PyxisInventoryReport(FPDF):
         else:
             stockout_w_margin = 0
 
-        stockout_str = f"{location_report.days_until_stockout:.1f}"
+        # No usage means an infinite projection; don't print "inf".
+        if math.isinf(location_report.days_until_stockout):
+            stockout_str = "No usage"
+        else:
+            stockout_str = f"{location_report.days_until_stockout:.1f}"
         self.cell(
             self.get_string_width(stockout_str) + stockout_w_margin * 2, 
             6, 
