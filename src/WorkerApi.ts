@@ -124,19 +124,21 @@ export default class WorkerApi {
 
   private async sendMessageAwaitable(data: any): Promise<FinishedMessage> {
     this.id = (this.id + 1) % Number.MAX_SAFE_INTEGER;
+    // Capture this request's id; this.id changes as later requests are sent.
+    const id = this.id;
     return new Promise((onSuccess, reject) => {
       const timeoutId = setTimeout(() => {
-        delete this.callbacks[this.id];
+        delete this.callbacks[id];
         reject(new Error("Worker operation timed out after 10 minutes"));
       }, 600000); // 10 minute timeout
 
-      this.callbacks[this.id] = (message: FinishedMessage) => {
+      this.callbacks[id] = (message: FinishedMessage) => {
         clearTimeout(timeoutId);
         onSuccess(message);
       };
 
       this.worker.postMessage({
-        id: this.id,
+        id,
         ...data,
       });
     });
