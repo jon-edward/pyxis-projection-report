@@ -12,6 +12,36 @@ class TransactionType(Enum):
     REFILL = "Refill"
 
 
+# Fewer removals than this in the usage window is flagged as "low data".
+MIN_REMOVALS_FOR_CONFIDENCE = 3
+
+# Shown at the end of the PDF and on the Excel summary sheet.
+USAGE_NOTES = [
+    "Average usage = units removed during the usage window / days in the window",
+    "Days remaining = current quantity / average daily usage; items with no usage have no projected stockout",
+    f"Low data = fewer than {MIN_REMOVALS_FOR_CONFIDENCE} removals in the window; treat the estimate with caution",
+]
+
+
+@dataclass
+class ReportContext:
+    """
+    Facts about the data behind a report, shown in its summary.
+
+    Attributes:
+        usage_window: (start, end) of the usage data, shared by all locations
+    """
+    usage_window: Optional[tuple[pd.Timestamp, pd.Timestamp]] = None
+
+    def usage_window_text(self, date_format: str = "%Y-%m-%d") -> Optional[str]:
+        """Usage window as text, e.g. "2026-10-04 to 2026-11-03 (30.0 days)"."""
+        if self.usage_window is None:
+            return None
+        start, end = self.usage_window
+        days = (end - start).total_seconds() / 86400
+        return f"{start.strftime(date_format)} to {end.strftime(date_format)} ({days:.1f} days)"
+
+
 @dataclass
 class InventoryItem:
     """
@@ -69,8 +99,10 @@ class LocationReport:
         removal_count: Number of removal transactions
         refill_count: Number of refill transactions
         inventory_item: Inventory configuration for this location
-        to_date: End date for calculations (defaults to now)
+        to_date: End date for calculations when no usage window is set
         is_critical: Whether item is critically low
+        window_start: Start of the usage window shared by all locations
+        window_end: End of the usage window shared by all locations
     """
     device: str
     device_location: str
@@ -85,6 +117,8 @@ class LocationReport:
     inventory_item: InventoryItem
     to_date: Optional[pd.Timestamp]
     is_critical: bool = False
+    window_start: Optional[pd.Timestamp] = None
+    window_end: Optional[pd.Timestamp] = None
 
     def __lt__(self, other) -> bool:
         """
@@ -103,36 +137,42 @@ class LocationReport:
         )
     
     @cached_property
-    def days_of_data(self) -> int:
+    def days_of_data(self) -> float:
         """
-        Calculate the number of days covered by the data.
-        
+        Length of the usage window in days (minimum 1).
+
+        Uses the window shared by all locations. Without one, falls back to
+        this location's first activity through to_date (or last activity).
+
         Returns:
-            Number of days between first and last activity (minimum 1)
-            
+            Days in the window, including fractions of a day
+
         Raises:
-            ValueError: If date range is invalid
+            ValueError: If the window ends before it starts
         """
-        last_day = self.to_date or self.last_activity
-        days = (last_day - self.first_activity).days
-        
+        start = self.window_start if self.window_start is not None else self.first_activity
+        end = self.window_end if self.window_end is not None else (self.to_date or self.last_activity)
+        days = (end - start) / pd.Timedelta(days=1)
+
         if days < 0:
-            raise ValueError(
-                f"Invalid date range: last activity ({last_day}) before "
-                f"first activity ({self.first_activity})"
-            )
-        
-        return max(1, days)
-    
+            raise ValueError(f"Invalid date range: window ends ({end}) before it starts ({start})")
+
+        return max(1.0, days)
+
     @cached_property
     def avg_daily_usage(self) -> float:
         """
         Calculate average daily usage rate.
-        
+
         Returns:
-            Average number of units removed per day
+            Average number of units removed per day over the usage window
         """
         return self.qty_removed / self.days_of_data
+
+    @property
+    def low_data(self) -> bool:
+        """True when there are too few removals for a reliable usage rate."""
+        return self.removal_count < MIN_REMOVALS_FOR_CONFIDENCE
     
     @cached_property
     def days_until_stockout(self) -> float:
