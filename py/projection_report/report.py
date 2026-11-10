@@ -217,8 +217,10 @@ class PyxisInventoryReport(FPDF):
 
         self.set_x(left_margin + self.style.indent_size)
         self.cell(line_w / 4, 6, f'Current: {location_report.current_qty}')
-        self.cell(line_w / 4, 6, f'Min: {location_report.qty_min}')
-        self.cell(line_w / 4, 6, f'Max: {location_report.qty_max}')
+        qty_min_str = "N/A" if location_report.qty_min is None else location_report.qty_min
+        qty_max_str = "N/A" if location_report.qty_max is None else location_report.qty_max
+        self.cell(line_w / 4, 6, f'Min: {qty_min_str}')
+        self.cell(line_w / 4, 6, f'Max: {qty_max_str}')
 
         days_remaining_str = "Days Remaining: "
         self.cell(self.get_string_width(days_remaining_str) + 1, 6, days_remaining_str)
