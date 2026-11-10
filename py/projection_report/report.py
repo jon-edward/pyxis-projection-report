@@ -266,7 +266,8 @@ class PyxisInventoryReport(FPDF):
         line_w = self.epw - self.style.indent_size
 
         self.set_x(left_margin + self.style.indent_size)
-        self.cell(line_w / 4, 6, f'Current: {location_report.current_qty}')
+        current_str = "Unknown" if location_report.current_qty is None else location_report.current_qty
+        self.cell(line_w / 4, 6, f'Current: {current_str}')
         qty_min_str = "N/A" if location_report.qty_min is None else location_report.qty_min
         qty_max_str = "N/A" if location_report.qty_max is None else location_report.qty_max
         self.cell(line_w / 4, 6, f'Min: {qty_min_str}')
@@ -305,14 +306,17 @@ class PyxisInventoryReport(FPDF):
         
         # Second line of data
         self.set_x(left_margin + self.style.indent_size)
-        first_activity_str = location_report.first_activity.strftime(self.style.short_date_format)
-        last_activity_str = location_report.last_activity.strftime(self.style.short_date_format)
-        usage_str = f'Average Weekly Usage: {location_report.avg_daily_usage * 7:.1f}'
-        if location_report.low_data:
-            usage_str += " (low data)"
-        self.cell(line_w * 0.3, 6, f'First Activity: {first_activity_str}')
-        self.cell(line_w * 0.3, 6, f'Last Activity: {last_activity_str}')
-        self.cell(line_w * 0.4, 6, usage_str, new_x="LMARGIN", new_y="NEXT", align='L')
+        if not location_report.has_activity:
+            self.cell(line_w, 6, 'No activity in the usage file', new_x="LMARGIN", new_y="NEXT", align='L')
+        else:
+            first_activity_str = location_report.first_activity.strftime(self.style.short_date_format)
+            last_activity_str = location_report.last_activity.strftime(self.style.short_date_format)
+            usage_str = f'Average Weekly Usage: {location_report.avg_daily_usage * 7:.1f}'
+            if location_report.low_data:
+                usage_str += " (low data)"
+            self.cell(line_w * 0.3, 6, f'First Activity: {first_activity_str}')
+            self.cell(line_w * 0.3, 6, f'Last Activity: {last_activity_str}')
+            self.cell(line_w * 0.4, 6, usage_str, new_x="LMARGIN", new_y="NEXT", align='L')
 
         underscore_size = self.get_string_width("_")
 
