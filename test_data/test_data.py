@@ -32,14 +32,21 @@ medications = [
 ]
 
 # Create inventory entries for each device
-for device in devices:
+for device_index, device in enumerate(devices, start=1):
     # Each device has 3-5 drawers
     num_drawers = random.randint(3, 5)
     for drawer in range(1, num_drawers + 1):
         # Each drawer has 2-4 medications
         selected_meds = random.sample(medications, random.randint(2, 4))
-        for med_id, med_desc in selected_meds:
-            location = f"{drawer}|{random.randint(1, 3)}|{random.randint(1, 5)}"
+        # Distinct sub-drawer/pocket per medication in this drawer.
+        slots = random.sample(
+            [(sub, pkt) for sub in range(1, 4) for pkt in range(1, 6)],
+            len(selected_meds),
+        )
+        for (med_id, med_desc), (sub, pkt) in zip(selected_meds, slots):
+            # Drawer numbers include the device, so a location string is
+            # unique across all devices.
+            location = f"{device_index * 10 + drawer}|{sub}|{pkt}"
             
             # Vary par levels by medication type
             if 'Injection' in med_desc:
