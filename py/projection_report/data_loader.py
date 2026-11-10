@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 
-from .models import InventoryItem, TransactionType
+from .models import InventoryEntry, InventoryItem, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +70,15 @@ class InventoryLoader:
         inventory_path: Path to the inventory Excel file
         conflicting_locations: Locations that appear more than once with
             different values; set by load(). The last row is used.
+        entries: Every row with its device and medication; set by load().
+        has_entry_columns: Whether the file has the Device and Med ID
+            columns that entries need; set by load().
     """
 
     inventory_path: Path
     conflicting_locations: list[str] = field(default_factory=list, init=False)
+    entries: list[InventoryEntry] = field(default_factory=list, init=False)
+    has_entry_columns: bool = field(default=False, init=False)
 
     def load(self) -> dict[str, InventoryItem]:
         """
@@ -137,6 +142,9 @@ class InventoryLoader:
         """
         items = {}
         conflicts = set()
+        entries = []
+        self.has_entry_columns = {"device", "med_id"} <= set(df.columns)
+        has_desc = "med_desc" in df.columns
         for row in df.itertuples():
             key = str(row.device_location)
             item = InventoryItem(
@@ -149,8 +157,25 @@ class InventoryLoader:
             if key in items and items[key] != item:
                 conflicts.add(key)
             items[key] = item
+            if self.has_entry_columns and not pd.isna(row.device) and not pd.isna(row.med_id):
+                desc = row.med_desc if has_desc and not pd.isna(row.med_desc) else None
+                entries.append(InventoryEntry(
+                    device=str(row.device),
+                    device_location=key,
+                    med_id=self._id_str(row.med_id),
+                    med_desc=None if desc is None else str(desc),
+                    item=item,
+                ))
         self.conflicting_locations = sorted(conflicts)
+        self.entries = entries
         return items
+
+    @staticmethod
+    def _id_str(value: Any) -> str:
+        """Med ID as text; Excel can read whole-number IDs as floats (101.0)."""
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
 
     @staticmethod
     def _safe_int(value: Any) -> Optional[int]:

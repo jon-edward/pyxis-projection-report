@@ -20,6 +20,7 @@ USAGE_NOTES = [
     "Average usage = units removed during the usage window / days in the window",
     "Days remaining = current quantity / average daily usage; items with no usage have no projected stockout",
     f"Low data = fewer than {MIN_REMOVALS_FOR_CONFIDENCE} removals in the window; treat the estimate with caution",
+    "No activity = in the inventory file but with no transactions in the usage file; its current quantity is unknown",
 ]
 
 
@@ -85,6 +86,16 @@ class InventoryItem:
 
 
 @dataclass
+class InventoryEntry:
+    """One inventory row with the device and medication it belongs to."""
+    device: str
+    device_location: str
+    med_id: str
+    med_desc: Optional[str]
+    item: InventoryItem
+
+
+@dataclass
 class LocationReport:
     """
     Usage and inventory status for a medication at a specific Pyxis location.
@@ -95,9 +106,10 @@ class LocationReport:
         med_id: Medication identifier
         med_desc: Medication description
         qty_removed: Total quantity removed during the period
-        current_qty: Current quantity in location
-        first_activity: Timestamp of first transaction
-        last_activity: Timestamp of last transaction
+        current_qty: Current quantity in location (None if unknown because
+            the location has no transactions)
+        first_activity: Timestamp of first transaction (None if no activity)
+        last_activity: Timestamp of last transaction (None if no activity)
         removal_count: Number of removal transactions
         refill_count: Number of refill transactions
         inventory_item: Inventory configuration for this location
@@ -111,9 +123,9 @@ class LocationReport:
     med_id: str
     med_desc: str
     qty_removed: int
-    current_qty: int
-    first_activity: pd.Timestamp
-    last_activity: pd.Timestamp
+    current_qty: Optional[int]
+    first_activity: Optional[pd.Timestamp]
+    last_activity: Optional[pd.Timestamp]
     removal_count: int
     refill_count: int
     inventory_item: InventoryItem
@@ -138,6 +150,11 @@ class LocationReport:
             other.med_desc.lower(), other.device_location
         )
     
+    @property
+    def has_activity(self) -> bool:
+        """False for an inventory location with no transactions in the usage file."""
+        return self.first_activity is not None
+
     @cached_property
     def days_of_data(self) -> float:
         """
@@ -154,6 +171,8 @@ class LocationReport:
         """
         start = self.window_start if self.window_start is not None else self.first_activity
         end = self.window_end if self.window_end is not None else (self.to_date or self.last_activity)
+        if start is None or end is None:
+            return 1.0
         days = (end - start) / pd.Timedelta(days=1)
 
         if days < 0:
@@ -194,10 +213,11 @@ class LocationReport:
         Calculate quantity needed to reach maximum par level.
         
         Returns:
-            Quantity to add to reach max, or None if max is not set
+            Quantity to add to reach max, or None if max or the current
+            quantity is not known
         """
         qty_max = self.qty_max
-        if qty_max is None:
+        if qty_max is None or self.current_qty is None:
             return None
         return max(0, qty_max - self.current_qty)
     

@@ -29,6 +29,11 @@ def _days_until_stockout(r: LocationReport) -> Optional[float]:
     return None if math.isinf(days) else round(days, 1)
 
 
+def _date(value) -> Any:
+    """Excel date, or blank when there is no activity."""
+    return None if value is None else value.to_pydatetime()
+
+
 # (header, value getter, column width, number format)
 COLUMNS: list[tuple[str, Callable[[LocationReport], Any], int, Optional[str]]] = [
     ("Device", lambda r: r.device, 14, None),
@@ -43,11 +48,12 @@ COLUMNS: list[tuple[str, Callable[[LocationReport], Any], int, Optional[str]]] =
     ("Avg Weekly Usage", lambda r: round(r.avg_daily_usage * 7, 1), 17, "0.0"),
     ("Critical", lambda r: "Yes" if r.is_critical else "No", 9, None),
     ("Active Order", lambda r: "Yes" if r.inventory_item.has_orders else "No", 13, None),
-    ("First Activity", lambda r: r.first_activity.to_pydatetime(), 14, "yyyy-mm-dd"),
-    ("Last Activity", lambda r: r.last_activity.to_pydatetime(), 14, "yyyy-mm-dd"),
+    ("First Activity", lambda r: _date(r.first_activity), 14, "yyyy-mm-dd"),
+    ("Last Activity", lambda r: _date(r.last_activity), 14, "yyyy-mm-dd"),
     ("Qty Removed", lambda r: r.qty_removed, 12, "0"),
     ("Removals", lambda r: r.removal_count, 10, "0"),
     ("Low Data", lambda r: "Yes" if r.low_data else "No", 10, None),
+    ("No Activity", lambda r: "No" if r.has_activity else "Yes", 12, None),
 ]
 
 

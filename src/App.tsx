@@ -649,7 +649,7 @@ create_report(config, progress=print_progress)
             <NumberField
               name="maxDays"
               label="Maximum Days"
-              description="Maximum number of days to project into the future. Leave blank to not filter by maximum days at all — items with no usage over the period will still be included."
+              description="Only include items that will run out within this many days. Leave blank for no limit: every item that passes the other filters is included, even items with no activity in the usage file."
               Field={Field}
               allowEmpty
             />

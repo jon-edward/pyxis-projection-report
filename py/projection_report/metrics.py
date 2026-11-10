@@ -92,6 +92,9 @@ class MetricsGenerator:
                 if report and self._should_include_report(report):
                     device_reports[device].append(report)
 
+        if self.config.max_days is None:
+            self._add_no_activity_reports(usage_df, id_to_desc, window, device_reports)
+
         if missing_inventory:
             self._warn(
                 f"{len(missing_inventory)} usage location(s) have no matching inventory row "
@@ -125,6 +128,53 @@ class MetricsGenerator:
         """
         return {str(row.med_id): str(row.med_desc) for row in df.itertuples()}
     
+    def _add_no_activity_reports(
+        self,
+        usage_df: pd.DataFrame,
+        id_to_desc: dict[str, str],
+        window: tuple[pd.Timestamp, pd.Timestamp],
+        device_reports: dict[str, list[LocationReport]],
+    ) -> None:
+        """
+        Add inventory locations that have no transactions in the usage file.
+
+        With no upper bound on days until stockout, these belong in the report
+        too. Their current quantity is unknown, since only transactions record it.
+        """
+        if not self.inventory_loader.inventory_path.exists():
+            return
+        if not self.inventory_loader.has_entry_columns:
+            self._warn(
+                "The inventory file has no Device or Med ID column, so inventory "
+                "locations with no activity in the usage file are not in the report"
+            )
+            return
+
+        active = set(zip(usage_df.device.astype(str), usage_df.device_location.astype(str)))
+        for entry in self.inventory_loader.entries:
+            if (entry.device, entry.device_location) in active:
+                continue
+            if not self.config.should_include_device(entry.device):
+                continue
+            report = LocationReport(
+                device=entry.device,
+                device_location=entry.device_location,
+                med_id=entry.med_id,
+                med_desc=entry.med_desc or id_to_desc.get(entry.med_id, entry.med_id),
+                qty_removed=0,
+                current_qty=None,
+                first_activity=None,
+                last_activity=None,
+                removal_count=0,
+                refill_count=0,
+                to_date=window[1],
+                inventory_item=entry.item,
+                window_start=window[0],
+                window_end=window[1],
+            )
+            if self._should_include_report(report):
+                device_reports[entry.device].append(report)
+
     def _should_include_report(self, report: LocationReport) -> bool:
         """
         Determine if a report should be included based on filters.
