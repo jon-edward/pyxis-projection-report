@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 import logging
@@ -68,9 +68,12 @@ class InventoryLoader:
     
     Attributes:
         inventory_path: Path to the inventory Excel file
+        conflicting_locations: Locations that appear more than once with
+            different values; set by load(). The last row is used.
     """
 
     inventory_path: Path
+    conflicting_locations: list[str] = field(default_factory=list, init=False)
 
     def load(self) -> dict[str, InventoryItem]:
         """
@@ -133,12 +136,20 @@ class InventoryLoader:
             Dictionary mapping device_location to InventoryItem
         """
         items = {}
+        conflicts = set()
         for row in df.itertuples():
-            items[str(row.device_location)] = InventoryItem(
+            key = str(row.device_location)
+            item = InventoryItem(
                 qty_min=self._safe_int(row.qty_min),
                 qty_max=self._safe_int(row.qty_max),
                 has_orders=row.has_orders == "Y",
             )
+            # Items are keyed by location alone, so a repeated location with
+            # different values would silently overwrite the earlier row.
+            if key in items and items[key] != item:
+                conflicts.add(key)
+            items[key] = item
+        self.conflicting_locations = sorted(conflicts)
         return items
 
     @staticmethod
