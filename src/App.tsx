@@ -19,6 +19,7 @@ const ReportConfigSchema = v.object({
   maxDays: v.nullish(v.union([v.number(), v.nan()])),
   devices: v.array(v.pipe(v.string(), v.trim())),
   exclude: v.array(v.pipe(v.string(), v.trim())),
+  outputFormat: v.picklist(["pdf", "excel"]),
   usageFile: v.file(),
   inventoryFile: v.file(),
 });
@@ -27,6 +28,17 @@ type ReportConfig = v.InferInput<typeof ReportConfigSchema>;
 
 // Cache key for localStorage
 const CACHE_KEY = "pyxis_report_config_v1";
+
+const DEFAULT_CONFIG = {
+  onlyCritical: true,
+  includeUnordered: false,
+  includeMinZero: false,
+  criticalThreshold: 3,
+  maxDays: 5,
+  devices: [""],
+  exclude: [""],
+  outputFormat: "pdf",
+};
 
 // Load cached configuration from localStorage
 function loadCachedConfig() {
@@ -116,6 +128,45 @@ function NumberField(props: NumberFieldProps) {
                 field.value ?? (allowEmpty ? "" : 0)
               }
             />
+          </div>
+        )}
+      </Field>
+    </div>
+  );
+}
+
+interface SelectFieldProps {
+  name: "outputFormat";
+  label: string;
+  description?: string;
+  options: { value: string; label: string }[];
+  Field: any;
+}
+
+function SelectField(props: SelectFieldProps) {
+  const { name, label, description, options, Field } = props;
+
+  return (
+    <div class="select-field">
+      <Field name={name}>
+        {(field: any, inputProps: any) => (
+          <div class="field-container">
+            <label for={name} class="field-label">
+              {label}
+            </label>
+            {description && <p class="field-description">{description}</p>}
+            <select id={name} class="select-input" {...inputProps}>
+              <For each={options}>
+                {(option) => (
+                  <option
+                    value={option.value}
+                    selected={field.value === option.value}
+                  >
+                    {option.label}
+                  </option>
+                )}
+              </For>
+            </select>
           </div>
         )}
       </Field>
@@ -307,15 +358,8 @@ export default function App() {
 
   const [form, { Form, Field, FieldArray }] = createForm<ReportConfig>({
     validate: valiForm(ReportConfigSchema),
-    initialValues: cachedConfig || {
-      onlyCritical: true,
-      includeUnordered: false,
-      includeMinZero: false,
-      criticalThreshold: 3,
-      maxDays: 5,
-      devices: [""],
-      exclude: [""],
-    },
+    // Defaults first, so settings cached before a field existed still validate.
+    initialValues: { ...DEFAULT_CONFIG, ...cachedConfig },
   });
 
   const [isLoading, setIsLoading] = createSignal(false);
@@ -335,6 +379,14 @@ export default function App() {
         ? result.maxDays
         : null;
 
+    const isExcel = result.outputFormat === "excel";
+    const outputName = isExcel
+      ? "projection_report.xlsx"
+      : "projection_report.pdf";
+    const outputMime = isExcel
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "application/pdf";
+
     // Save configuration to cache (excluding files)
     const configToCache = {
       onlyCritical: result.onlyCritical,
@@ -344,6 +396,7 @@ export default function App() {
       maxDays,
       devices: result.devices,
       exclude: result.exclude,
+      outputFormat: result.outputFormat,
     };
     saveCachedConfig(configToCache);
 
@@ -369,9 +422,12 @@ export default function App() {
         max_days: maxDays,
         devices: result.devices.filter((d) => d.length > 0),
         exclude: result.exclude.filter((d) => d.length > 0),
+        output_format: result.outputFormat,
       };
 
-      setLoadingStatus("Generating report...");
+      setLoadingStatus(
+        isExcel ? "Generating Excel workbook..." : "Generating report..."
+      );
       const report = await worker.runPython(
         `
 import json
@@ -391,17 +447,17 @@ create_report(config)
 
       setLoadingStatus("Downloading report...");
       const fileData: Uint8Array = await worker.fileContent(
-        "reports/projection_report.pdf"
+        `reports/${outputName}`
       );
 
       const blob = new Blob([new Uint8Array(fileData)], {
-        type: "application/pdf",
+        type: outputMime,
       });
 
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "projection_report.pdf";
+      link.download = outputName;
       link.style.display = "none";
       document.body.appendChild(link);
       link.click();
@@ -413,7 +469,7 @@ create_report(config)
 
       await worker.removeFile("reports/Inventory.xlsx");
       await worker.removeFile("reports/Usage.xlsx");
-      await worker.removeFile("reports/projection_report.pdf");
+      await worker.removeFile(`reports/${outputName}`);
 
       setSuccess(
         "Report generated successfully! Your download should begin shortly."
@@ -557,6 +613,23 @@ create_report(config)
               form={form}
               Field={Field}
               FieldArray={FieldArray}
+            />
+          </Section>
+
+          {/* Output Section */}
+          <Section
+            title="Output"
+            description="Choose the report file type"
+          >
+            <SelectField
+              name="outputFormat"
+              label="Output Format"
+              description="PDF reports can take a long time to generate when they have many items. Excel is much faster, and you can sort and filter it."
+              options={[
+                { value: "pdf", label: "PDF (printable)" },
+                { value: "excel", label: "Excel (.xlsx, fast for large reports)" },
+              ]}
+              Field={Field}
             />
           </Section>
 

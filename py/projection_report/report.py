@@ -20,10 +20,9 @@ import logging
 import math
 from pathlib import Path
 
-import pandas as pd
-
 from .config import ReportConfig
 from .data_loader import InventoryLoader, UsageLoader
+from .excel import write_excel
 from .metrics import MetricsGenerator
 from .models import LocationReport
 
@@ -342,85 +341,78 @@ class PyxisInventoryReport(FPDF):
     def export_to_excel(self, path: Path) -> None:
         """
         Export metrics to Excel for further analysis.
-        
+
         Args:
             path: Path for output Excel file
         """
-        logger.info(f"Exporting metrics to Excel: {path}")
-        with pd.ExcelWriter(path) as writer:
-            for device, reports in self.metrics.items():
-                df = pd.DataFrame([{
-                    'Device Location': r.device_location,
-                    'Medication': r.med_desc,
-                    'Med ID': r.med_id,
-                    'Current Qty': r.current_qty,
-                    'Min': r.qty_min,
-                    'Max': r.qty_max,
-                    'Days Until Stockout': round(r.days_until_stockout, 1),
-                    'Avg Daily Usage': round(r.avg_daily_usage, 2),
-                    'Is Critical': r.is_critical,
-                    'Has Orders': r.inventory_item.has_orders,
-                    'First Activity': r.first_activity,
-                    'Last Activity': r.last_activity,
-                } for r in reports])
-                
-                # Excel sheet names limited to 31 characters
-                sheet_name = device[:31]
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        logger.info(f"Excel export complete: {path}")
+        write_excel(self.config, _sorted_sections(self.metrics), path)
 
 
 # ============================================================================
 # Report Generation
 # ============================================================================
 
+def _sorted_sections(
+    metrics: dict[str, list[LocationReport]]
+) -> list[tuple[str, list[LocationReport]]]:
+    """Order devices by name and sort each device's reports in place."""
+    sections = sorted(metrics.items(), key=lambda x: x[0].lower())
+    for _, location_reports in sections:
+        location_reports.sort()
+    return sections
+
+
 def create_report(config: ReportConfig, export_excel: bool = False) -> None:
     """
     Generate inventory report from configuration.
-    
+
+    The report is written to config.output_path (PDF), or to
+    config.excel_path when config.output_format is "excel".
+
     Args:
         config: Report configuration
-        export_excel: Whether to also export to Excel format
-        
+        export_excel: Also write an Excel file next to the PDF
+
     Raises:
         DataLoadError: If data loading fails
         Exception: If report generation fails
     """
     logger.info("Starting report generation")
-    
+
     try:
         metrics = MetricsGenerator(
-            config, 
-            inventory_loader=InventoryLoader(config.reports_dir / "Inventory.xlsx"), 
+            config,
+            inventory_loader=InventoryLoader(config.reports_dir / "Inventory.xlsx"),
             usage_loader=UsageLoader(config.reports_dir / "Usage.xlsx")
         ).metrics()
+
+        sections = _sorted_sections(metrics)
+
+        if config.output_format == "excel":
+            write_excel(config, sections, config.excel_path)
+            logger.info(f"Report generated successfully: {config.excel_path}")
+            return
 
         report = PyxisInventoryReport(config, metrics)
         report.add_page()
 
         report.add_summary(metrics)
-        
-        sections = list(metrics.items())
-        sections.sort(key=lambda x: x[0].lower())
 
         for device_name, location_reports in sections:
-            location_reports.sort()
             report.add_section(device_name, location_reports)
 
         report.add_notes()
-        
+
         # Ensure output directory exists
         config.output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         report.output(str(config.output_path))
         logger.info(f"Report generated successfully: {config.output_path}")
-        
+
         # Optional Excel export
         if export_excel:
-            excel_path = config.output_path.with_suffix('.xlsx')
-            report.export_to_excel(excel_path)
-            
+            write_excel(config, sections, config.excel_path)
+
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
         raise
