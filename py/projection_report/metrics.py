@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import defaultdict
 import logging
 from typing import Optional
@@ -7,7 +7,7 @@ import pandas as pd
 
 from .config import ReportConfig
 from .data_loader import UsageLoader, InventoryLoader
-from .models import LocationReport, InventoryItem, TransactionType
+from .models import LocationReport, InventoryItem, ReportContext, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,12 @@ class MetricsGenerator:
         config: Report configuration
         inventory_loader: Loader for inventory data
         usage_loader: Loader for usage data
+        context: Facts about the data, filled in by metrics()
     """
     config: ReportConfig
     inventory_loader: InventoryLoader
     usage_loader: UsageLoader
+    context: ReportContext = field(default_factory=ReportContext, init=False)
 
     def metrics(self) -> dict[str, list[LocationReport]]:
         """
@@ -42,6 +44,11 @@ class MetricsGenerator:
         inventory_items = self.inventory_loader.load()
         usage_df = self.usage_loader.load()
 
+        # One window for every location, from the whole file (before device
+        # filters) so a location's rate doesn't depend on which devices are shown.
+        window = (usage_df.dt.min(), usage_df.dt.max())
+        self.context = ReportContext(usage_window=window)
+
         device_reports = defaultdict(list)
         id_to_desc = self._build_id_map(usage_df)
         
@@ -58,8 +65,8 @@ class MetricsGenerator:
             for (device_location, med_id), group in device_df.groupby(["device_location", "med_id"]):
                 med_id = str(med_id)
                 report = self._create_location_report(
-                    device, device_location, med_id, group, 
-                    id_to_desc, inventory_items
+                    device, device_location, med_id, group,
+                    id_to_desc, inventory_items, window
                 )
                 
                 # Apply filters
@@ -113,11 +120,12 @@ class MetricsGenerator:
         med_id: str,
         group: pd.DataFrame,
         id_to_desc: dict[str, str],
-        inventory_items: dict[str, InventoryItem]
+        inventory_items: dict[str, InventoryItem],
+        window: tuple[pd.Timestamp, pd.Timestamp],
     ) -> Optional[LocationReport]:
         """
         Create a location report from grouped transaction data.
-        
+
         Args:
             device: Device name
             device_location: Location within device
@@ -125,13 +133,17 @@ class MetricsGenerator:
             group: DataFrame of transactions for this location/medication
             id_to_desc: Mapping of medication IDs to descriptions
             inventory_items: Inventory configuration by location
-            
+            window: (start, end) of the usage data, shared by all locations
+
         Returns:
             LocationReport object or None if location not in inventory
         """
         group = group.sort_values(by=["dt"]).reset_index(drop=True)
-        
-        qty_removed = self._sum_positive(group.qty_beg - group.qty_end)
+
+        # Usage is what was removed. Refills, returns, and count corrections
+        # also change the quantity but are not usage.
+        removals = group[group.transaction_type == TransactionType.REMOVE.value]
+        qty_removed = self._sum_positive(removals.qty_beg - removals.qty_end)
 
         if device_location not in inventory_items:
             logger.warning(f"Location {device_location} not found in inventory data")
@@ -146,10 +158,12 @@ class MetricsGenerator:
             current_qty=int(group.qty_end.iloc[-1]),
             first_activity=group.dt.iloc[0],
             last_activity=group.dt.iloc[-1],
-            removal_count=len(group[group.transaction_type == TransactionType.REMOVE.value]),
+            removal_count=len(removals),
             refill_count=len(group[group.transaction_type == TransactionType.REFILL.value]),
-            to_date=pd.Timestamp.now(),
+            to_date=window[1],
             inventory_item=inventory_items[device_location],
+            window_start=window[0],
+            window_end=window[1],
         )
 
         report.is_critical = report.days_until_stockout < self.config.critical_threshold
