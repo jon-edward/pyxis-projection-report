@@ -8,6 +8,7 @@ import pandas as pd
 from .config import ReportConfig
 from .data_loader import UsageLoader, InventoryLoader
 from .models import LocationReport, InventoryItem, ReportContext, TransactionType
+from .progress import ProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,13 @@ class MetricsGenerator:
         config: Report configuration
         inventory_loader: Loader for inventory data
         usage_loader: Loader for usage data
+        progress: Optional callback for progress updates, once per device
         context: Facts about the data, filled in by metrics()
     """
     config: ReportConfig
     inventory_loader: InventoryLoader
     usage_loader: UsageLoader
+    progress: Optional[ProgressCallback] = None
     context: ReportContext = field(default_factory=ReportContext, init=False)
 
     def metrics(self) -> dict[str, list[LocationReport]]:
@@ -64,7 +67,10 @@ class MetricsGenerator:
         devices = usage_df.device.unique()
         logger.info(f"Generating metrics for {len(devices)} devices")
 
-        for device in devices:
+        for device_number, device in enumerate(devices):
+            if self.progress:
+                self.progress("Calculating usage", device_number, len(devices))
+
             if not self.config.should_include_device(device):
                 logger.debug(f"Skipping device: {device}")
                 continue
